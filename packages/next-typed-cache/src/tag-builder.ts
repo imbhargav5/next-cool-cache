@@ -15,14 +15,14 @@ export function buildTag(
   path: string[],
   params: Record<string, string>
 ): string {
-  const basePath = path.join('/');
+  const basePath = path.join("/");
   const paramValues = Object.values(params);
 
   if (paramValues.length === 0) {
     return basePath;
   }
 
-  return `${basePath}:${paramValues.join(':')}`;
+  return `${basePath}:${paramValues.join(":")}`;
 }
 
 /**
@@ -39,7 +39,7 @@ export function buildAncestorTags(path: string[]): string[] {
   const ancestors: string[] = [];
 
   for (let i = 1; i < path.length; i++) {
-    ancestors.push(path.slice(0, i).join('/'));
+    ancestors.push(path.slice(0, i).join("/"));
   }
 
   return ancestors;
