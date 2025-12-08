@@ -22,7 +22,6 @@ Each audience needs a different caching strategy.
 ```ts
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   blog: {
@@ -62,11 +61,7 @@ const schema = {
 
 const scopes = ['admin', 'public', 'author'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ## Implementation Patterns
@@ -346,7 +341,6 @@ Here's a complete cache configuration with all the patterns:
 ```ts
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   blog: {
@@ -380,11 +374,7 @@ const schema = {
 
 const scopes = ['admin', 'public', 'author'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ## Key Takeaways

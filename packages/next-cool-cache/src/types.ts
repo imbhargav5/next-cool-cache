@@ -112,19 +112,3 @@ export type ScopedCache<T, Scopes extends readonly string[]> = {
 } & BuildTree<T> &
   BranchNode;
 
-// ============================================
-// OPTIONS TYPE
-// ============================================
-
-/**
- * Options for createCache function.
- * Allows injecting Next.js cache functions for testing.
- */
-export type CacheOptions = {
-  /** next/cache cacheTag function */
-  cacheTag?: (...tags: string[]) => void;
-  /** next/cache revalidateTag function */
-  revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
-  /** next/cache updateTag function */
-  updateTag?: (tag: string) => void;
-};

@@ -31,7 +31,6 @@ With `next-cool-cache`, your IDE catches these errors instantly:
 
 ```ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   users: {
@@ -42,11 +41,7 @@ const schema = {
 
 const scopes = ['admin', 'public'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 
 // TypeScript error: Property 'user' does not exist
 cache.admin.user.byId.revalidateTag({ id: '123' });
@@ -97,7 +92,6 @@ Pure TypeScript types with minimal runtime. Tags are simple strings under the ho
 ```ts
 // cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   blog: {
@@ -117,11 +111,7 @@ const schema = {
 
 const scopes = ['admin', 'public'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ```ts

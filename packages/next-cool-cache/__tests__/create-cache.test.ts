@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { createCache } from "../src/create-cache";
 import {
   ecommerceSchema,
   ecommerceScopes,
@@ -15,24 +14,29 @@ import {
   wideSchema,
 } from "./fixtures/schemas";
 
-describe("createCache", () => {
-  let mockCacheTag: jest.Mock;
-  let mockRevalidateTag: jest.Mock;
-  let mockUpdateTag: jest.Mock;
+// Mock next/cache module
+const mockCacheTag = jest.fn();
+const mockRevalidateTag = jest.fn();
+const mockUpdateTag = jest.fn();
 
+jest.unstable_mockModule("next/cache", () => ({
+  cacheTag: (...args: unknown[]) => mockCacheTag(...args),
+  revalidateTag: (...args: unknown[]) => mockRevalidateTag(...args),
+  updateTag: (...args: unknown[]) => mockUpdateTag(...args),
+}));
+
+// Import after mocking
+const { createCache } = await import("../src/create-cache");
+
+describe("createCache", () => {
   beforeEach(() => {
-    mockCacheTag = jest.fn();
-    mockRevalidateTag = jest.fn();
-    mockUpdateTag = jest.fn();
+    mockCacheTag.mockClear();
+    mockRevalidateTag.mockClear();
+    mockUpdateTag.mockClear();
   });
 
   describe("with simple schema", () => {
-    const createTestCache = () =>
-      createCache(simpleSchema, simpleScopes, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+    const createTestCache = () => createCache(simpleSchema, simpleScopes);
 
     describe("leaf node with params", () => {
       it("cacheTag registers hierarchical tags", () => {
@@ -174,12 +178,7 @@ describe("createCache", () => {
   });
 
   describe("with nested schema", () => {
-    const createTestCache = () =>
-      createCache(nestedSchema, nestedScopes, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+    const createTestCache = () => createCache(nestedSchema, nestedScopes);
 
     it("handles deeply nested paths", () => {
       const cache = createTestCache();
@@ -223,11 +222,7 @@ describe("createCache", () => {
 
   describe("with multi-param schema", () => {
     const createTestCache = () =>
-      createCache(multiParamSchema, ["admin"] as const, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      createCache(multiParamSchema, ["admin"] as const);
 
     it("handles multiple params in order", () => {
       const cache = createTestCache();
@@ -245,11 +240,7 @@ describe("createCache", () => {
 
   describe("_path property", () => {
     it("exposes correct path for debugging", () => {
-      const cache = createCache(simpleSchema, simpleScopes, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      const cache = createCache(simpleSchema, simpleScopes);
 
       expect(cache.admin.users.byId._path).toBe("admin/users/byId");
       expect(cache.admin.users._path).toBe("admin/users");
@@ -259,26 +250,9 @@ describe("createCache", () => {
     });
   });
 
-  describe("default no-op functions", () => {
-    it("works without options (no-op mode)", () => {
-      const cache = createCache(simpleSchema, simpleScopes);
-
-      // Should not throw
-      expect(() => {
-        cache.admin.users.byId.cacheTag({ id: "123" });
-        cache.admin.users.byId.revalidateTag({ id: "123" });
-        cache.admin.users.byId.updateTag({ id: "123" });
-      }).not.toThrow();
-    });
-  });
-
   describe("with e-commerce schema", () => {
     const createTestCache = () =>
-      createCache(ecommerceSchema, ecommerceScopes, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      createCache(ecommerceSchema, ecommerceScopes);
 
     describe("product operations", () => {
       it("cacheTag for product by ID", () => {
@@ -633,12 +607,7 @@ describe("createCache", () => {
   });
 
   describe("with SaaS schema", () => {
-    const createTestCache = () =>
-      createCache(saasSchema, saasScopes, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+    const createTestCache = () => createCache(saasSchema, saasScopes);
 
     describe("deep navigation (6 levels)", () => {
       it("handles organization → projects → tasks → comments", () => {
@@ -978,11 +947,7 @@ describe("createCache", () => {
 
   describe("with extremely nested schema", () => {
     const createTestCache = () =>
-      createCache(extremelyNestedSchema, ["admin"] as const, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      createCache(extremelyNestedSchema, ["admin"] as const);
 
     it("navigates to 6th level leaf with params", () => {
       const cache = createTestCache();
@@ -1133,11 +1098,7 @@ describe("createCache", () => {
 
   describe("with edge case schema", () => {
     const createTestCache = () =>
-      createCache(edgeCaseSchema, ["admin"] as const, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      createCache(edgeCaseSchema, ["admin"] as const);
 
     describe("email addresses", () => {
       it("handles standard email", () => {
@@ -1406,11 +1367,7 @@ describe("createCache", () => {
 
   describe("with wide schema", () => {
     const createTestCache = () =>
-      createCache(wideSchema, ["admin", "user"] as const, {
-        cacheTag: mockCacheTag,
-        revalidateTag: mockRevalidateTag,
-        updateTag: mockUpdateTag,
-      });
+      createCache(wideSchema, ["admin", "user"] as const);
 
     describe("dashboard siblings", () => {
       it("handles stats", () => {

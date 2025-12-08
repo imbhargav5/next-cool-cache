@@ -22,7 +22,6 @@ E-commerce has demanding caching requirements:
 ```ts
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   products: {
@@ -66,11 +65,7 @@ const schema = {
 
 const scopes = ['admin', 'public', 'customer'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ## Implementation Patterns

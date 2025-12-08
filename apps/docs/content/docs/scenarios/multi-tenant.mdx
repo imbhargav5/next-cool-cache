@@ -22,7 +22,6 @@ Multi-tenant applications have unique caching concerns:
 ```ts
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   tenants: {
@@ -59,11 +58,7 @@ const schema = {
 
 const scopes = ['superadmin', 'tenant-admin', 'member'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ## Implementation Patterns

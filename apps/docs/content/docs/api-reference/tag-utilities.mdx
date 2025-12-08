@@ -271,7 +271,7 @@ import { revalidateTag } from 'next/cache';
 // Invalidate a specific pattern without using the typed cache
 function invalidatePattern(pattern: string[]) {
   const tag = buildTag(pattern, {});
-  revalidateTag(tag);
+  revalidateTag(tag, 'max');
 }
 
 // Example: Invalidate all admin caches
@@ -295,10 +295,9 @@ function expectCacheTagsRegistered(
   expect(mockCacheTag).toHaveBeenCalledWith(...expectedTags);
 }
 
-// Usage in tests
+// Usage in tests (with jest.mock for next/cache)
 it('registers correct cache tags', () => {
-  const mockCacheTag = jest.fn();
-  const cache = createCache(schema, scopes, { cacheTag: mockCacheTag });
+  const cache = createCache(schema, scopes);
 
   cache.admin.users.byId.cacheTag({ id: '123' });
 

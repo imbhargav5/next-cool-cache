@@ -96,7 +96,6 @@ yarn add next-cool-cache
 ```typescript
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 // Define your cache structure
 const schema = {
@@ -120,11 +119,7 @@ const schema = {
 const scopes = ['admin', 'public', 'user'] as const;
 
 // Create the typed cache
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ### 2. Use in Your App
@@ -156,22 +151,17 @@ async function clearAllPosts() {
 
 ## API Reference
 
-### `createCache(schema, scopes, options)`
+### `createCache(schema, scopes)`
 
 Creates a typed cache object from your schema and scopes.
 
 ```typescript
-const cache = createCache(schema, scopes, {
-  cacheTag,      // from next/cache
-  revalidateTag, // from next/cache
-  updateTag,     // from next/cache
-});
+const cache = createCache(schema, scopes);
 ```
 
 **Parameters:**
 - `schema` - Your cache structure (see Schema Format below)
 - `scopes` - Array of scope names like `['admin', 'public']`
-- `options` - Next.js cache functions (optional for testing)
 
 ### Schema Format
 
@@ -319,22 +309,26 @@ cache.admin.blog.posts.byId.revalidateTag({ id });
 // TypeScript guides you to every call site that needs updating
 ```
 
-### Testing Without Next.js
+### Testing
 
-The cache functions are injected, so you can test without Next.js:
+Mock the `next/cache` module in your tests:
 
 ```typescript
-import { createCache } from 'next-cool-cache';
+import { jest } from '@jest/globals';
 
 const mockCacheTag = jest.fn();
 const mockRevalidateTag = jest.fn();
 const mockUpdateTag = jest.fn();
 
-const cache = createCache(schema, scopes, {
-  cacheTag: mockCacheTag,
-  revalidateTag: mockRevalidateTag,
-  updateTag: mockUpdateTag,
-});
+jest.mock('next/cache', () => ({
+  cacheTag: (...args: unknown[]) => mockCacheTag(...args),
+  revalidateTag: (...args: unknown[]) => mockRevalidateTag(...args),
+  updateTag: (...args: unknown[]) => mockUpdateTag(...args),
+}));
+
+import { createCache } from 'next-cool-cache';
+
+const cache = createCache(schema, scopes);
 
 // Test your cache logic
 cache.admin.users.byId.revalidateTag({ id: '123' });

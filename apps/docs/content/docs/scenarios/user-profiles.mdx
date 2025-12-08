@@ -21,7 +21,6 @@ User profile systems have unique caching requirements:
 ```ts
 // lib/cache.ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   users: {
@@ -55,11 +54,7 @@ const schema = {
 
 const scopes = ['admin', 'public', 'self'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ## Implementation Patterns

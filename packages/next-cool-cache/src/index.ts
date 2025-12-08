@@ -6,7 +6,6 @@
  * @example
  * ```ts
  * import { createCache } from 'next-cool-cache';
- * import { cacheTag, revalidateTag, updateTag } from 'next/cache';
  *
  * const schema = {
  *   users: {
@@ -17,11 +16,7 @@
  *
  * const scopes = ['admin', 'public'] as const;
  *
- * export const cache = createCache(schema, scopes, {
- *   cacheTag,
- *   revalidateTag,
- *   updateTag,
- * });
+ * export const cache = createCache(schema, scopes);
  *
  * // In a cached function:
  * cache.admin.users.byId.cacheTag({ id: '123' });
@@ -51,7 +46,6 @@ export {
 export type {
   BranchNode,
   BuildTree,
-  CacheOptions,
   ExtractParams,
   IsLeaf,
   LeafNode,
