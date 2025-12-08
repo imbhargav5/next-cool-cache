@@ -1,6 +1,5 @@
 import type { DocData } from "fumadocs-mdx/runtime/types";
-import { Callout } from "fumadocs-ui/components/callout";
-import { Card, Cards } from "fumadocs-ui/components/card";
+
 import {
   DocsBody,
   DocsDescription,
@@ -9,16 +8,13 @@ import {
 } from "fumadocs-ui/page";
 import { notFound } from "next/navigation";
 import { source } from "@/lib/source";
+import { getMDXComponents } from "@/app/mdx-components";
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
 }
 
-const mdxComponents = {
-  Card,
-  Cards,
-  Callout,
-};
+
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
@@ -37,7 +33,7 @@ export default async function Page({ params }: PageProps) {
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX components={mdxComponents} />
+        <MDX components={getMDXComponents()} />
       </DocsBody>
     </DocsPage>
   );

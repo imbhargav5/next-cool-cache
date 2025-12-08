@@ -10,10 +10,12 @@
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
     "fumadocs-core": "^16.2.3",
     "fumadocs-mdx": "^14.1.0",
     "fumadocs-ui": "^16.2.3",
     "next": "^16.0.7",
+    "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
