@@ -109,7 +109,11 @@ function buildScopedBranch(
     const childPath = [...resourcePath, key];
 
     if (isLeafNode(childSchema)) {
-      result[key] = buildLeafNodeImpl(childPath, scopePath, getParams(childSchema));
+      result[key] = buildLeafNodeImpl(
+        childPath,
+        scopePath,
+        getParams(childSchema)
+      );
     } else {
       result[key] = buildScopedBranch(
         childSchema as Record<string, unknown>,
@@ -145,7 +149,10 @@ function buildUnscopedBranch(
     const childPath = [...resourcePath, key];
 
     if (isLeafNode(childSchema)) {
-      result[key] = buildUnscopedLeafNodeImpl(childPath, getParams(childSchema));
+      result[key] = buildUnscopedLeafNodeImpl(
+        childPath,
+        getParams(childSchema)
+      );
     } else {
       result[key] = buildUnscopedBranch(
         childSchema as Record<string, unknown>,

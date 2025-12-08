@@ -111,4 +111,3 @@ export type ScopedCache<T, Scopes extends readonly string[]> = {
   [S in Scopes[number]]: BuildTree<T> & BranchNode;
 } & BuildTree<T> &
   BranchNode;
-

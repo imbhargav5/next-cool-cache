@@ -251,8 +251,7 @@ describe("createCache", () => {
   });
 
   describe("with e-commerce schema", () => {
-    const createTestCache = () =>
-      createCache(ecommerceSchema, ecommerceScopes);
+    const createTestCache = () => createCache(ecommerceSchema, ecommerceScopes);
 
     describe("product operations", () => {
       it("cacheTag for product by ID", () => {
