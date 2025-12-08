@@ -134,6 +134,7 @@ export const cache = createCache(schema, scopes, {
 async function getBlogPost(id: string) {
   'use cache';
   cache.public.blog.posts.byId.cacheTag({ id });
+  // → cacheTag('public/blog/posts/byId:<id>', 'public/blog/posts', 'public/blog', 'public', 'blog/posts/byId:<id>', 'blog/posts', 'blog')
   return db.posts.findById(id);
 }
 
@@ -141,12 +142,15 @@ async function getBlogPost(id: string) {
 async function updateBlogPost(id: string, data: PostData) {
   await db.posts.update(id, data);
   cache.admin.blog.posts.byId.updateTag({ id });    // Immediate for admin
+  // → updateTag('admin/blog/posts/byId:<id>')
   cache.public.blog.posts.byId.revalidateTag({ id }); // SWR for public
+  // → revalidateTag('public/blog/posts/byId:<id>', 'max')
 }
 
 // Invalidate entire sections
 async function clearAllPosts() {
   cache.blog.posts.revalidateTag(); // All posts, all scopes
+  // → revalidateTag('blog/posts', 'max')
 }
 ```
 
