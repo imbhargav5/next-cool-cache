@@ -6,7 +6,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
       nav={{
-        title: "next-typed-cache",
+        title: "next-cool-cache",
       }}
       tree={source.pageTree}
     >

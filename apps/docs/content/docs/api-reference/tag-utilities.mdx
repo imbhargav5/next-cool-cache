@@ -5,7 +5,7 @@ description: Low-level tag building functions for advanced use cases
 
 # Tag Utilities
 
-`next-typed-cache` exports several utility functions for building cache tags. These are used internally by the cache object, but are also available for advanced use cases.
+`next-cool-cache` exports several utility functions for building cache tags. These are used internally by the cache object, but are also available for advanced use cases.
 
 ## Import
 
@@ -16,7 +16,7 @@ import {
   buildScopedTag,
   buildAllTags,
   buildUnscopedTags,
-} from 'next-typed-cache';
+} from 'next-cool-cache';
 ```
 
 ## buildTag()
@@ -193,7 +193,7 @@ These utilities help work with schema definitions:
 Check if a schema node is a leaf node.
 
 ```ts
-import { isLeafNode } from 'next-typed-cache';
+import { isLeafNode } from 'next-cool-cache';
 
 isLeafNode({})                              // true (empty object)
 isLeafNode({ _params: ['id'] })             // true (has only _params)
@@ -205,7 +205,7 @@ isLeafNode({ list: {}, byId: {} })          // false (has children)
 Extract the params array from a schema node.
 
 ```ts
-import { getParams } from 'next-typed-cache';
+import { getParams } from 'next-cool-cache';
 
 getParams({ _params: ['id', 'slug'] })  // ['id', 'slug']
 getParams({})                            // []
@@ -217,7 +217,7 @@ getParams({ list: {} })                  // []
 Get all child keys from a schema node, excluding `_params`.
 
 ```ts
-import { getChildKeys } from 'next-typed-cache';
+import { getChildKeys } from 'next-cool-cache';
 
 getChildKeys({
   list: {},
@@ -234,7 +234,7 @@ getChildKeys({
 If you need to build tags manually (e.g., for logging or debugging):
 
 ```ts
-import { buildTag, buildAllTags } from 'next-typed-cache';
+import { buildTag, buildAllTags } from 'next-cool-cache';
 
 function logCacheOperation(operation: string, scope: string, resource: string[], params: Record<string, string>) {
   const tags = buildAllTags(resource, [scope], params);
@@ -265,7 +265,7 @@ logCacheOperation('revalidate', 'admin', ['users', 'byId'], { id: '123' });
 Building custom invalidation patterns:
 
 ```ts
-import { buildTag } from 'next-typed-cache';
+import { buildTag } from 'next-cool-cache';
 import { revalidateTag } from 'next/cache';
 
 // Invalidate a specific pattern without using the typed cache
@@ -283,7 +283,7 @@ invalidatePattern(['admin']);
 Creating test utilities:
 
 ```ts
-import { buildAllTags } from 'next-typed-cache';
+import { buildAllTags } from 'next-cool-cache';
 
 function expectCacheTagsRegistered(
   mockCacheTag: jest.Mock,
