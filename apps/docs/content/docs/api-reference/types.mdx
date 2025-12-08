@@ -19,7 +19,6 @@ import type {
   BranchNode,
   BuildTree,
   ScopedCache,
-  CacheOptions,
 } from 'next-cool-cache';
 ```
 
@@ -253,46 +252,12 @@ type MyCache = ScopedCache<typeof schema, typeof scopes>;
 // - cache.updateTag() - root BranchNode
 ```
 
-## Options Type
-
-### CacheOptions
-
-Configuration options for `createCache()`.
-
-```ts
-interface CacheOptions {
-  /** next/cache cacheTag function */
-  cacheTag?: (...tags: string[]) => void;
-
-  /** next/cache revalidateTag function */
-  revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
-
-  /** next/cache updateTag function */
-  updateTag?: (tag: string) => void;
-}
-```
-
-**All properties are optional:**
-- If not provided, no-op functions are used (safe for testing)
-- In production, pass the actual Next.js functions
-
-**Example:**
-```ts
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
-
-const options: CacheOptions = {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-};
-```
-
 ## Using Types in Your Code
 
 ### Extracting Types from Your Cache
 
 ```ts
-const cache = createCache(schema, scopes, options);
+const cache = createCache(schema, scopes);
 
 // Get the full cache type
 type MyCache = typeof cache;
@@ -323,13 +288,12 @@ invalidateLeaf(cache.admin.users.byId, { id: '123' });
 ### Typing Custom Cache Wrappers
 
 ```ts
-import type { ScopedCache, CacheOptions } from 'next-cool-cache';
+import type { ScopedCache } from 'next-cool-cache';
 
 function createAppCache<T extends Record<string, unknown>>(
-  schema: T,
-  options: CacheOptions
+  schema: T
 ): ScopedCache<T, readonly ['admin', 'public']> {
-  return createCache(schema, ['admin', 'public'] as const, options);
+  return createCache(schema, ['admin', 'public'] as const);
 }
 ```
 

@@ -18,8 +18,7 @@ import { createCache } from 'next-cool-cache';
 ```ts
 function createCache<T, S extends readonly string[]>(
   schema: T,
-  scopes: S,
-  options?: CacheOptions
+  scopes: S
 ): ScopedCache<T, S>
 ```
 
@@ -63,25 +62,6 @@ const scopes = ['admin', 'public', 'user'] as const;
 - Each scope becomes a namespace in the returned cache object
 - Common patterns: `['admin', 'public']`, `['admin', 'public', 'user']`
 
-### options
-
-**Type:** `CacheOptions`
-**Required:** No
-
-Optional configuration for injecting Next.js cache functions.
-
-```ts
-interface CacheOptions {
-  cacheTag?: (...tags: string[]) => void;
-  revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
-  updateTag?: (tag: string) => void;
-}
-```
-
-**Default behavior:**
-- If not provided, uses no-op functions (safe for testing)
-- In production, you should pass the actual Next.js functions
-
 ## Return Value
 
 Returns a `ScopedCache<T, S>` object with:
@@ -96,7 +76,6 @@ Returns a `ScopedCache<T, S>` object with:
 
 ```ts
 import { createCache } from 'next-cool-cache';
-import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
   users: {
@@ -111,11 +90,7 @@ const schema = {
 
 const scopes = ['admin', 'public'] as const;
 
-export const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+export const cache = createCache(schema, scopes);
 ```
 
 ### Accessing Scoped Namespaces
@@ -139,22 +114,26 @@ cache.users.byId.revalidateTag({ id: '123' });
 // This invalidates 'users/byId:123' which affects all scopes
 ```
 
-### Testing Without Next.js
+### Testing
+
+Mock the `next/cache` module in your tests:
 
 ```ts
-// No options = no-op functions (safe for testing)
-const cache = createCache(schema, scopes);
+import { jest } from '@jest/globals';
 
-// With mock functions
 const mockCacheTag = jest.fn();
 const mockRevalidateTag = jest.fn();
 const mockUpdateTag = jest.fn();
 
-const cache = createCache(schema, scopes, {
-  cacheTag: mockCacheTag,
-  revalidateTag: mockRevalidateTag,
-  updateTag: mockUpdateTag,
-});
+jest.mock('next/cache', () => ({
+  cacheTag: (...args: unknown[]) => mockCacheTag(...args),
+  revalidateTag: (...args: unknown[]) => mockRevalidateTag(...args),
+  updateTag: (...args: unknown[]) => mockUpdateTag(...args),
+}));
+
+import { createCache } from 'next-cool-cache';
+
+const cache = createCache(schema, scopes);
 
 // Test your code
 cache.admin.users.byId.cacheTag({ id: '123' });
@@ -202,11 +181,7 @@ const schema = {
 
 const scopes = ['admin', 'public', 'author'] as const;
 
-const cache = createCache(schema, scopes, {
-  cacheTag,
-  revalidateTag,
-  updateTag,
-});
+const cache = createCache(schema, scopes);
 
 // Access patterns
 cache.admin.blog.posts.list.cacheTag();
@@ -231,7 +206,7 @@ const schema = {
   },
 } as const;
 
-const cache = createCache(schema, ['admin'] as const, options);
+const cache = createCache(schema, ['admin'] as const);
 
 // Must provide all params
 cache.admin.comments.byPostAndUser.cacheTag({
