@@ -7,14 +7,12 @@ import {
   DocsTitle,
 } from "fumadocs-ui/page";
 import { notFound } from "next/navigation";
-import { source } from "@/lib/source";
 import { getMDXComponents } from "@/app/mdx-components";
+import { source } from "@/lib/source";
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
 }
-
-
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
