@@ -1,0 +1,313 @@
+---
+title: Tag Utilities
+description: Low-level tag building functions for advanced use cases
+---
+
+# Tag Utilities
+
+`next-typed-cache` exports several utility functions for building cache tags. These are used internally by the cache object, but are also available for advanced use cases.
+
+## Import
+
+```ts
+import {
+  buildTag,
+  buildAncestorTags,
+  buildScopedTag,
+  buildAllTags,
+  buildUnscopedTags,
+} from 'next-typed-cache';
+```
+
+## buildTag()
+
+Builds a single tag string from a path and optional parameters.
+
+**Signature:**
+```ts
+function buildTag(
+  path: string[],
+  params: Record<string, string>
+): string
+```
+
+**Parameters:**
+- `path` - Array of path segments
+- `params` - Object of parameter key-value pairs
+
+**Returns:** A tag string
+
+**Examples:**
+```ts
+// Without params
+buildTag(['users', 'list'], {})
+// Returns: 'users/list'
+
+// With single param
+buildTag(['users', 'byId'], { id: '123' })
+// Returns: 'users/byId:123'
+
+// With multiple params
+buildTag(['comments', 'byPostAndUser'], { postId: 'p1', userId: 'u1' })
+// Returns: 'comments/byPostAndUser:p1:u1'
+
+// With scoped path
+buildTag(['admin', 'users', 'byId'], { id: '123' })
+// Returns: 'admin/users/byId:123'
+```
+
+**Format:**
+- Path segments are joined with `/`
+- Params are appended with `:` separator
+- Multiple param values are joined with `:`
+
+## buildAncestorTags()
+
+Generates all ancestor tags for a given path. Used for hierarchical tag registration.
+
+**Signature:**
+```ts
+function buildAncestorTags(path: string[]): string[]
+```
+
+**Parameters:**
+- `path` - Array of path segments
+
+**Returns:** Array of ancestor tag strings (not including the full path itself)
+
+**Examples:**
+```ts
+buildAncestorTags(['users', 'byId'])
+// Returns: ['users']
+
+buildAncestorTags(['blog', 'posts', 'byId'])
+// Returns: ['blog', 'blog/posts']
+
+buildAncestorTags(['admin', 'blog', 'posts', 'byId'])
+// Returns: ['admin', 'admin/blog', 'admin/blog/posts']
+
+buildAncestorTags(['users'])
+// Returns: []
+```
+
+**Note:** The result does not include the full path itself. The full path is typically the leaf tag.
+
+## buildScopedTag()
+
+Prefixes a tag with a scope name.
+
+**Signature:**
+```ts
+function buildScopedTag(scope: string, tag: string): string
+```
+
+**Parameters:**
+- `scope` - The scope name
+- `tag` - The tag to prefix
+
+**Returns:** Scoped tag string
+
+**Examples:**
+```ts
+buildScopedTag('admin', 'users/byId:123')
+// Returns: 'admin/users/byId:123'
+
+buildScopedTag('public', 'blog/posts/list')
+// Returns: 'public/blog/posts/list'
+```
+
+## buildAllTags()
+
+Builds the complete set of hierarchical tags for a scoped cache operation. This is what `cacheTag()` uses internally.
+
+**Signature:**
+```ts
+function buildAllTags(
+  resourcePath: string[],
+  scopePath: string[],
+  params: Record<string, string>
+): string[]
+```
+
+**Parameters:**
+- `resourcePath` - The resource path segments (e.g., `['users', 'byId']`)
+- `scopePath` - The scope path segments (e.g., `['admin']`)
+- `params` - Parameter key-value pairs
+
+**Returns:** Array of all tags (scoped and unscoped, leaf and ancestors)
+
+**Example:**
+```ts
+buildAllTags(['users', 'byId'], ['admin'], { id: '123' })
+// Returns:
+// [
+//   'admin/users/byId:123',  // scoped leaf
+//   'admin/users',           // scoped ancestor
+//   'admin',                 // scope root
+//   'users/byId:123',        // unscoped leaf
+//   'users'                  // unscoped ancestor
+// ]
+```
+
+**Order:** Tags are returned from most specific to least specific:
+1. Scoped leaf tag
+2. Scoped ancestor tags (reversed, most specific first)
+3. Unscoped leaf tag
+4. Unscoped ancestor tags (reversed, most specific first)
+
+## buildUnscopedTags()
+
+Builds hierarchical tags without scope prefix. Used for cross-scope operations.
+
+**Signature:**
+```ts
+function buildUnscopedTags(
+  resourcePath: string[],
+  params: Record<string, string>
+): string[]
+```
+
+**Parameters:**
+- `resourcePath` - The resource path segments
+- `params` - Parameter key-value pairs
+
+**Returns:** Array of unscoped tags (leaf and ancestors)
+
+**Example:**
+```ts
+buildUnscopedTags(['blog', 'posts', 'byId'], { id: '456' })
+// Returns:
+// [
+//   'blog/posts/byId:456',  // leaf
+//   'blog/posts',           // ancestor
+//   'blog'                  // ancestor
+// ]
+```
+
+## Schema Utilities
+
+These utilities help work with schema definitions:
+
+### isLeafNode()
+
+Check if a schema node is a leaf node.
+
+```ts
+import { isLeafNode } from 'next-typed-cache';
+
+isLeafNode({})                              // true (empty object)
+isLeafNode({ _params: ['id'] })             // true (has only _params)
+isLeafNode({ list: {}, byId: {} })          // false (has children)
+```
+
+### getParams()
+
+Extract the params array from a schema node.
+
+```ts
+import { getParams } from 'next-typed-cache';
+
+getParams({ _params: ['id', 'slug'] })  // ['id', 'slug']
+getParams({})                            // []
+getParams({ list: {} })                  // []
+```
+
+### getChildKeys()
+
+Get all child keys from a schema node, excluding `_params`.
+
+```ts
+import { getChildKeys } from 'next-typed-cache';
+
+getChildKeys({
+  list: {},
+  byId: { _params: ['id'] },
+  _params: ['test']  // excluded
+})
+// Returns: ['list', 'byId']
+```
+
+## Advanced Use Cases
+
+### Custom Tag Generation
+
+If you need to build tags manually (e.g., for logging or debugging):
+
+```ts
+import { buildTag, buildAllTags } from 'next-typed-cache';
+
+function logCacheOperation(operation: string, scope: string, resource: string[], params: Record<string, string>) {
+  const tags = buildAllTags(resource, [scope], params);
+
+  console.log(`Cache ${operation}:`, {
+    leafTag: tags[0],
+    allTags: tags,
+    scope,
+    resource: resource.join('/'),
+    params,
+  });
+}
+
+// Usage
+logCacheOperation('revalidate', 'admin', ['users', 'byId'], { id: '123' });
+// Logs:
+// Cache revalidate: {
+//   leafTag: 'admin/users/byId:123',
+//   allTags: ['admin/users/byId:123', 'admin/users', 'admin', 'users/byId:123', 'users'],
+//   scope: 'admin',
+//   resource: 'users/byId',
+//   params: { id: '123' }
+// }
+```
+
+### Custom Invalidation Logic
+
+Building custom invalidation patterns:
+
+```ts
+import { buildTag } from 'next-typed-cache';
+import { revalidateTag } from 'next/cache';
+
+// Invalidate a specific pattern without using the typed cache
+function invalidatePattern(pattern: string[]) {
+  const tag = buildTag(pattern, {});
+  revalidateTag(tag);
+}
+
+// Example: Invalidate all admin caches
+invalidatePattern(['admin']);
+```
+
+### Testing Helpers
+
+Creating test utilities:
+
+```ts
+import { buildAllTags } from 'next-typed-cache';
+
+function expectCacheTagsRegistered(
+  mockCacheTag: jest.Mock,
+  scope: string,
+  resource: string[],
+  params: Record<string, string>
+) {
+  const expectedTags = buildAllTags(resource, [scope], params);
+  expect(mockCacheTag).toHaveBeenCalledWith(...expectedTags);
+}
+
+// Usage in tests
+it('registers correct cache tags', () => {
+  const mockCacheTag = jest.fn();
+  const cache = createCache(schema, scopes, { cacheTag: mockCacheTag });
+
+  cache.admin.users.byId.cacheTag({ id: '123' });
+
+  expectCacheTagsRegistered(mockCacheTag, 'admin', ['users', 'byId'], { id: '123' });
+});
+```
+
+## See Also
+
+- [Cache Methods](/docs/api-reference/cache-methods) - How these utilities are used
+- [Hierarchical Tagging](/docs/concepts/hierarchical-tagging) - Concept explanation
+- [Types](/docs/api-reference/types) - TypeScript type definitions

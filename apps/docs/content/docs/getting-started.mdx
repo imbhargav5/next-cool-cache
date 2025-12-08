@@ -1,0 +1,216 @@
+---
+title: Getting Started
+description: Install and configure next-typed-cache in your Next.js project
+---
+
+# Getting Started
+
+Get up and running with `next-typed-cache` in about 5 minutes.
+
+## Prerequisites
+
+- **Next.js 16.0.0+** with the App Router
+- **TypeScript 5.0+** (recommended)
+- `strict: true` in your `tsconfig.json`
+
+## Installation
+
+```bash
+npm install next-typed-cache
+```
+
+```bash
+pnpm add next-typed-cache
+```
+
+```bash
+yarn add next-typed-cache
+```
+
+## Step 1: Define Your Schema
+
+Create a cache configuration file (e.g., `lib/cache.ts`):
+
+```ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+// Define your cache schema
+const schema = {
+  users: {
+    list: {},                              // No params needed
+    byId: { _params: ['id'] as const },    // Requires id param
+    byEmail: { _params: ['email'] as const },
+  },
+  posts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byAuthor: { _params: ['authorId'] as const },
+  },
+} as const;  // <-- Critical: Must use 'as const'!
+```
+
+### Schema Rules
+
+| Node Type | Definition | Example |
+|-----------|------------|---------|
+| Leaf (no params) | Empty object `{}` | `list: {}` |
+| Leaf (with params) | Object with `_params` | `byId: { _params: ['id'] as const }` |
+| Branch | Nested object | `users: { list: {}, byId: {...} }` |
+
+<Callout type="warn">
+Always use `as const` on both the schema and params arrays. Without it, TypeScript cannot infer the literal types needed for full type safety.
+</Callout>
+
+## Step 2: Define Scopes
+
+Scopes let you have different cache strategies for different audiences:
+
+```ts
+const scopes = ['admin', 'public', 'user'] as const;
+```
+
+Common scope patterns:
+- `admin` - For editors/admins who need instant updates
+- `public` - For anonymous visitors (stale-while-revalidate)
+- `user` - For authenticated users viewing their own data
+
+## Step 3: Create the Cache
+
+```ts
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+### Complete Example
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+  posts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byAuthor: { _params: ['authorId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Step 4: Use in Your Application
+
+### In Cached Functions
+
+Use `cacheTag()` inside functions marked with `'use cache'`:
+
+```ts
+// app/users/[id]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getUser(id: string) {
+  'use cache';
+  cache.public.users.byId.cacheTag({ id });
+
+  const user = await db.users.findUnique({ where: { id } });
+  return user;
+}
+
+export default async function UserPage({ params }: { params: { id: string } }) {
+  const user = await getUser(params.id);
+  return <UserProfile user={user} />;
+}
+```
+
+### In Server Actions
+
+Use `revalidateTag()` or `updateTag()` to invalidate cached data:
+
+```ts
+// app/actions/user.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function updateUser(id: string, data: UserData) {
+  await db.users.update({ where: { id }, data });
+
+  // Immediate update for admins
+  cache.admin.users.byId.updateTag({ id });
+
+  // Stale-while-revalidate for public (no loading screens)
+  cache.public.users.byId.revalidateTag({ id });
+}
+```
+
+### Choosing Between updateTag and revalidateTag
+
+| Method | Behavior | User Experience | Use When |
+|--------|----------|-----------------|----------|
+| `updateTag()` | Expires immediately | May see loading state | Admin dashboards, editors |
+| `revalidateTag()` | Stale-while-revalidate | Shows stale data while fetching | Public pages, end users |
+
+## TypeScript Configuration
+
+For full type safety, ensure your `tsconfig.json` has:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true
+  }
+}
+```
+
+## Common Issues
+
+### "Property does not exist" Error
+
+Make sure you used `as const` on both the schema and scopes:
+
+```ts
+// Wrong
+const schema = { users: { list: {} } };
+const scopes = ['admin'];
+
+// Correct
+const schema = { users: { list: {} } } as const;
+const scopes = ['admin'] as const;
+```
+
+### "Argument is not assignable" Error
+
+Check that your params match the schema definition:
+
+```ts
+// Schema defines: byId: { _params: ['id'] as const }
+
+// Wrong - using wrong param name
+cache.admin.users.byId.cacheTag({ userId: '123' });
+
+// Correct
+cache.admin.users.byId.cacheTag({ id: '123' });
+```
+
+## Next Steps
+
+Now that you have the basics set up:
+
+- [Schema Design](/docs/concepts/schema-design) - Learn how to structure complex schemas
+- [Understanding Scopes](/docs/concepts/scopes) - Master multi-scope caching strategies
+- [Blog CMS Scenario](/docs/scenarios/blog-cms) - See a complete real-world example

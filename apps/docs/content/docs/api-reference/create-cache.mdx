@@ -1,0 +1,268 @@
+---
+title: createCache()
+description: Factory function to create a typed cache object from a schema
+---
+
+# createCache()
+
+The `createCache` function is the main entry point for `next-typed-cache`. It takes a schema and scopes, and returns a fully typed cache object.
+
+## Import
+
+```ts
+import { createCache } from 'next-typed-cache';
+```
+
+## Signature
+
+```ts
+function createCache<T, S extends readonly string[]>(
+  schema: T,
+  scopes: S,
+  options?: CacheOptions
+): ScopedCache<T, S>
+```
+
+## Parameters
+
+### schema
+
+**Type:** `T extends Record<string, unknown>`
+**Required:** Yes
+
+The cache schema defining your resources and their parameters.
+
+```ts
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+```
+
+**Rules:**
+- Must use `as const` for full type inference
+- Leaf nodes are either `{}` (no params) or `{ _params: [...] as const }` (with params)
+- Branch nodes are nested objects without `_params`
+- `_params` is a reserved key
+
+### scopes
+
+**Type:** `S extends readonly string[]`
+**Required:** Yes
+
+Array of scope names for your cache namespaces.
+
+```ts
+const scopes = ['admin', 'public', 'user'] as const;
+```
+
+**Rules:**
+- Must use `as const` for full type inference
+- Each scope becomes a namespace in the returned cache object
+- Common patterns: `['admin', 'public']`, `['admin', 'public', 'user']`
+
+### options
+
+**Type:** `CacheOptions`
+**Required:** No
+
+Optional configuration for injecting Next.js cache functions.
+
+```ts
+interface CacheOptions {
+  cacheTag?: (...tags: string[]) => void;
+  revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
+  updateTag?: (tag: string) => void;
+}
+```
+
+**Default behavior:**
+- If not provided, uses no-op functions (safe for testing)
+- In production, you should pass the actual Next.js functions
+
+## Return Value
+
+Returns a `ScopedCache<T, S>` object with:
+
+1. **Scoped namespaces** - One property per scope (e.g., `cache.admin`, `cache.public`)
+2. **Unscoped access** - Direct access to resources for cross-scope operations (e.g., `cache.users`)
+3. **Type-safe methods** - All paths and parameters are typed
+
+## Usage
+
+### Basic Usage
+
+```ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+  posts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+### Accessing Scoped Namespaces
+
+```ts
+// Admin scope
+cache.admin.users.list.cacheTag();
+cache.admin.users.byId.revalidateTag({ id: '123' });
+
+// Public scope
+cache.public.users.list.cacheTag();
+cache.public.users.byId.revalidateTag({ id: '123' });
+```
+
+### Cross-Scope Operations
+
+```ts
+// Invalidate across all scopes
+cache.users.byId.revalidateTag({ id: '123' });
+
+// This invalidates 'users/byId:123' which affects all scopes
+```
+
+### Testing Without Next.js
+
+```ts
+// No options = no-op functions (safe for testing)
+const cache = createCache(schema, scopes);
+
+// With mock functions
+const mockCacheTag = jest.fn();
+const mockRevalidateTag = jest.fn();
+const mockUpdateTag = jest.fn();
+
+const cache = createCache(schema, scopes, {
+  cacheTag: mockCacheTag,
+  revalidateTag: mockRevalidateTag,
+  updateTag: mockUpdateTag,
+});
+
+// Test your code
+cache.admin.users.byId.cacheTag({ id: '123' });
+
+// Assert
+expect(mockCacheTag).toHaveBeenCalledWith(
+  'admin/users/byId:123',
+  'admin/users',
+  'admin',
+  'users/byId:123',
+  'users'
+);
+```
+
+## Examples
+
+### Complex Schema
+
+```ts
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+    },
+    drafts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+    },
+    categories: {
+      list: {},
+      bySlug: { _params: ['slug'] as const },
+    },
+  },
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    settings: {
+      byUserId: { _params: ['userId'] as const },
+    },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'author'] as const;
+
+const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+
+// Access patterns
+cache.admin.blog.posts.list.cacheTag();
+cache.admin.blog.posts.byId.cacheTag({ id: 'post-123' });
+cache.public.blog.categories.bySlug.revalidateTag({ slug: 'tech' });
+cache.author.blog.drafts.byId.updateTag({ id: 'draft-456' });
+
+// Branch operations
+cache.admin.blog.posts.revalidateTag();  // All posts
+cache.admin.blog.revalidateTag();        // All blog content
+```
+
+### Multiple Parameters
+
+```ts
+const schema = {
+  comments: {
+    byPostAndUser: { _params: ['postId', 'userId'] as const },
+  },
+  projects: {
+    byOwnerAndSlug: { _params: ['ownerId', 'slug'] as const },
+  },
+} as const;
+
+const cache = createCache(schema, ['admin'] as const, options);
+
+// Must provide all params
+cache.admin.comments.byPostAndUser.cacheTag({
+  postId: 'post-1',
+  userId: 'user-1',
+});
+
+// TypeScript error if missing param
+cache.admin.comments.byPostAndUser.cacheTag({ postId: 'post-1' });
+// Error: Property 'userId' is missing
+```
+
+## Type Safety
+
+The returned cache object is fully typed:
+
+```ts
+// Autocomplete works
+cache.admin.users.b // suggests: byId
+
+// TypeScript catches typos
+cache.admin.user.byId // Error: 'user' doesn't exist, did you mean 'users'?
+
+// Params are enforced
+cache.admin.users.byId.cacheTag({ userId: '123' }); // Error: Expected 'id', got 'userId'
+cache.admin.users.byId.cacheTag(); // Error: Expected params object
+cache.admin.users.list.cacheTag({ id: '123' }); // Error: 'list' takes no params
+```
+
+## See Also
+
+- [Cache Methods](/docs/api-reference/cache-methods) - Methods available on cache nodes
+- [Types](/docs/api-reference/types) - TypeScript type definitions
+- [Schema Design](/docs/concepts/schema-design) - How to design your schema

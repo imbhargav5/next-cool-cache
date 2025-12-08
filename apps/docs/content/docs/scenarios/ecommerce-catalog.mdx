@@ -1,0 +1,547 @@
+---
+title: E-commerce Catalog
+description: Managing product catalog caching for an e-commerce platform
+---
+
+# E-commerce Catalog Scenario
+
+Learn how to implement caching for an e-commerce platform with product listings, inventory management, and shopping cart operations.
+
+## The Challenge
+
+E-commerce has demanding caching requirements:
+
+- **Product pages**: High-traffic, need aggressive caching
+- **Inventory**: Must reflect stock accurately to prevent overselling
+- **Pricing**: Must be consistent across all views
+- **Cart**: User-specific, needs to persist across sessions
+- **Categories**: Structural, cached but updated on reorganization
+
+## Schema Design
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  products: {
+    list: {},
+    featured: {},
+    byId: { _params: ['id'] as const },
+    bySlug: { _params: ['slug'] as const },
+    byCategory: { _params: ['categoryId'] as const },
+    byBrand: { _params: ['brandId'] as const },
+    search: { _params: ['query'] as const },
+    inventory: {
+      byId: { _params: ['productId'] as const },
+    },
+    pricing: {
+      byId: { _params: ['productId'] as const },
+    },
+  },
+  categories: {
+    list: {},
+    tree: {},
+    byId: { _params: ['id'] as const },
+    bySlug: { _params: ['slug'] as const },
+  },
+  brands: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    bySlug: { _params: ['slug'] as const },
+  },
+  cart: {
+    bySessionId: { _params: ['sessionId'] as const },
+    byUserId: { _params: ['userId'] as const },
+  },
+  wishlist: {
+    byUserId: { _params: ['userId'] as const },
+  },
+  reviews: {
+    byProductId: { _params: ['productId'] as const },
+    average: { _params: ['productId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'customer'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Implementation Patterns
+
+### Pattern 1: Product Listing Page
+
+```ts
+// app/products/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getProductsList(page: number = 1) {
+  'use cache';
+  cache.public.products.list.cacheTag();
+
+  return db.products.findMany({
+    where: { status: 'published', inventory: { gt: 0 } },
+    orderBy: { createdAt: 'desc' },
+    skip: (page - 1) * 24,
+    take: 24,
+    include: {
+      category: true,
+      images: { take: 1 },
+    },
+  });
+}
+
+async function getFeaturedProducts() {
+  'use cache';
+  cache.public.products.featured.cacheTag();
+
+  return db.products.findMany({
+    where: { featured: true, status: 'published' },
+    take: 8,
+    include: { images: { take: 1 } },
+  });
+}
+
+export default async function ProductsPage() {
+  const [products, featured] = await Promise.all([
+    getProductsList(),
+    getFeaturedProducts(),
+  ]);
+
+  return (
+    <ShopLayout>
+      <FeaturedCarousel products={featured} />
+      <ProductGrid products={products} />
+    </ShopLayout>
+  );
+}
+```
+
+### Pattern 2: Product Detail Page
+
+Product pages need separate caching for different concerns:
+
+```ts
+// app/products/[slug]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getProduct(slug: string) {
+  'use cache';
+  cache.public.products.bySlug.cacheTag({ slug });
+
+  return db.products.findUnique({
+    where: { slug, status: 'published' },
+    include: {
+      category: true,
+      brand: true,
+      images: true,
+      variants: true,
+    },
+  });
+}
+
+async function getProductInventory(productId: string) {
+  'use cache';
+  cache.public.products.inventory.byId.cacheTag({ productId });
+
+  return db.inventory.findUnique({
+    where: { productId },
+    select: { quantity: true, reserved: true },
+  });
+}
+
+async function getProductReviews(productId: string) {
+  'use cache';
+  cache.public.reviews.byProductId.cacheTag({ productId });
+
+  return db.reviews.findMany({
+    where: { productId, approved: true },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    include: { user: { select: { name: true } } },
+  });
+}
+
+async function getAverageRating(productId: string) {
+  'use cache';
+  cache.public.reviews.average.cacheTag({ productId });
+
+  const result = await db.reviews.aggregate({
+    where: { productId, approved: true },
+    _avg: { rating: true },
+    _count: true,
+  });
+
+  return {
+    average: result._avg.rating ?? 0,
+    count: result._count,
+  };
+}
+
+export default async function ProductPage({ params }: { params: { slug: string } }) {
+  const product = await getProduct(params.slug);
+  if (!product) notFound();
+
+  const [inventory, reviews, rating] = await Promise.all([
+    getProductInventory(product.id),
+    getProductReviews(product.id),
+    getAverageRating(product.id),
+  ]);
+
+  const inStock = inventory && inventory.quantity - inventory.reserved > 0;
+
+  return (
+    <ProductLayout>
+      <ProductImages images={product.images} />
+      <ProductInfo product={product} rating={rating} inStock={inStock} />
+      <AddToCartButton productId={product.id} disabled={!inStock} />
+      <ReviewsSection reviews={reviews} rating={rating} />
+    </ProductLayout>
+  );
+}
+```
+
+### Pattern 3: Category Pages
+
+```ts
+// app/categories/[slug]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getCategory(slug: string) {
+  'use cache';
+  cache.public.categories.bySlug.cacheTag({ slug });
+
+  return db.categories.findUnique({
+    where: { slug },
+    include: { children: true },
+  });
+}
+
+async function getProductsByCategory(categoryId: string) {
+  'use cache';
+  cache.public.products.byCategory.cacheTag({ categoryId });
+
+  return db.products.findMany({
+    where: {
+      categoryId,
+      status: 'published',
+    },
+    orderBy: { createdAt: 'desc' },
+    include: { images: { take: 1 } },
+  });
+}
+
+export default async function CategoryPage({ params }: { params: { slug: string } }) {
+  const category = await getCategory(params.slug);
+  if (!category) notFound();
+
+  const products = await getProductsByCategory(category.id);
+
+  return (
+    <CategoryLayout category={category}>
+      <SubcategoryNav subcategories={category.children} />
+      <ProductGrid products={products} />
+    </CategoryLayout>
+  );
+}
+```
+
+### Pattern 4: Inventory Updates
+
+When inventory changes, update caches appropriately:
+
+```ts
+// app/actions/inventory.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function updateInventory(productId: string, quantity: number) {
+  const inventory = await db.inventory.update({
+    where: { productId },
+    data: { quantity },
+  });
+
+  // Admin sees immediately
+  cache.admin.products.inventory.byId.updateTag({ productId });
+
+  // Public uses SWR (brief stale data acceptable)
+  cache.public.products.inventory.byId.revalidateTag({ productId });
+
+  // If now out of stock, update product lists
+  if (quantity === 0) {
+    cache.public.products.list.revalidateTag();
+    cache.public.products.featured.revalidateTag();
+
+    const product = await db.products.findUnique({
+      where: { id: productId },
+      select: { categoryId: true },
+    });
+
+    if (product) {
+      cache.public.products.byCategory.revalidateTag({
+        categoryId: product.categoryId,
+      });
+    }
+  }
+
+  return inventory;
+}
+
+export async function reserveInventory(productId: string, quantity: number) {
+  // Called when item is added to cart
+  const inventory = await db.inventory.update({
+    where: { productId },
+    data: { reserved: { increment: quantity } },
+  });
+
+  // Inventory display should update
+  cache.public.products.inventory.byId.revalidateTag({ productId });
+
+  return inventory;
+}
+
+export async function releaseInventory(productId: string, quantity: number) {
+  // Called when item is removed from cart or cart expires
+  const inventory = await db.inventory.update({
+    where: { productId },
+    data: { reserved: { decrement: quantity } },
+  });
+
+  cache.public.products.inventory.byId.revalidateTag({ productId });
+
+  return inventory;
+}
+```
+
+### Pattern 5: Cart Operations
+
+```ts
+// lib/cart.ts
+import { cache } from '@/lib/cache';
+import { getSession } from '@/lib/session';
+
+async function getCart() {
+  const session = await getSession();
+
+  if (session.userId) {
+    return getCartByUserId(session.userId);
+  } else {
+    return getCartBySessionId(session.id);
+  }
+}
+
+async function getCartByUserId(userId: string) {
+  'use cache';
+  cache.customer.cart.byUserId.cacheTag({ userId });
+
+  return db.carts.findUnique({
+    where: { userId },
+    include: {
+      items: {
+        include: {
+          product: {
+            include: { images: { take: 1 } },
+          },
+        },
+      },
+    },
+  });
+}
+
+async function getCartBySessionId(sessionId: string) {
+  'use cache';
+  cache.customer.cart.bySessionId.cacheTag({ sessionId });
+
+  return db.carts.findUnique({
+    where: { sessionId },
+    include: {
+      items: {
+        include: {
+          product: {
+            include: { images: { take: 1 } },
+          },
+        },
+      },
+    },
+  });
+}
+
+// app/actions/cart.ts
+'use server';
+
+export async function addToCart(productId: string, quantity: number) {
+  const session = await getSession();
+
+  // Add item to cart in database
+  const cart = await db.carts.upsert({
+    where: session.userId
+      ? { userId: session.userId }
+      : { sessionId: session.id },
+    create: {
+      userId: session.userId,
+      sessionId: session.userId ? undefined : session.id,
+      items: {
+        create: { productId, quantity },
+      },
+    },
+    update: {
+      items: {
+        upsert: {
+          where: { cartId_productId: { cartId: 'cart', productId } },
+          create: { productId, quantity },
+          update: { quantity: { increment: quantity } },
+        },
+      },
+    },
+  });
+
+  // Reserve inventory
+  await reserveInventory(productId, quantity);
+
+  // Update cart cache
+  if (session.userId) {
+    cache.customer.cart.byUserId.updateTag({ userId: session.userId });
+  } else {
+    cache.customer.cart.bySessionId.updateTag({ sessionId: session.id });
+  }
+
+  return cart;
+}
+
+export async function removeFromCart(productId: string) {
+  const session = await getSession();
+
+  // Get current quantity before removing
+  const cartItem = await db.cartItems.findFirst({
+    where: {
+      productId,
+      cart: session.userId
+        ? { userId: session.userId }
+        : { sessionId: session.id },
+    },
+  });
+
+  if (cartItem) {
+    // Release inventory
+    await releaseInventory(productId, cartItem.quantity);
+
+    // Remove from cart
+    await db.cartItems.delete({ where: { id: cartItem.id } });
+
+    // Update cart cache
+    if (session.userId) {
+      cache.customer.cart.byUserId.updateTag({ userId: session.userId });
+    } else {
+      cache.customer.cart.bySessionId.updateTag({ sessionId: session.id });
+    }
+  }
+}
+```
+
+### Pattern 6: Product Publishing Workflow
+
+```ts
+// app/actions/products.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function publishProduct(productId: string) {
+  const product = await db.products.update({
+    where: { id: productId },
+    data: { status: 'published' },
+  });
+
+  // Admin sees immediately
+  cache.admin.products.byId.updateTag({ id: productId });
+  cache.admin.products.list.updateTag();
+
+  // Public pages update
+  cache.public.products.byId.revalidateTag({ id: productId });
+  cache.public.products.bySlug.revalidateTag({ slug: product.slug });
+  cache.public.products.list.revalidateTag();
+  cache.public.products.featured.revalidateTag();
+  cache.public.products.byCategory.revalidateTag({ categoryId: product.categoryId });
+
+  if (product.brandId) {
+    cache.public.products.byBrand.revalidateTag({ brandId: product.brandId });
+  }
+
+  return product;
+}
+
+export async function unpublishProduct(productId: string) {
+  const product = await db.products.update({
+    where: { id: productId },
+    data: { status: 'draft' },
+  });
+
+  // Immediately remove from all public caches
+  cache.public.products.byId.updateTag({ id: productId });
+  cache.public.products.bySlug.updateTag({ slug: product.slug });
+  cache.public.products.list.revalidateTag();
+  cache.public.products.featured.revalidateTag();
+  cache.public.products.byCategory.revalidateTag({ categoryId: product.categoryId });
+
+  cache.admin.products.byId.updateTag({ id: productId });
+
+  return product;
+}
+```
+
+### Pattern 7: Category Reorganization
+
+```ts
+// app/actions/categories.ts
+'use server';
+
+export async function moveCategory(categoryId: string, newParentId: string | null) {
+  await db.categories.update({
+    where: { id: categoryId },
+    data: { parentId: newParentId },
+  });
+
+  // Category structure changed - update all category caches
+  cache.admin.categories.revalidateTag();
+  cache.public.categories.revalidateTag();
+
+  // Products in this category may need updating
+  cache.public.products.byCategory.revalidateTag({ categoryId });
+}
+
+export async function deleteCategory(categoryId: string) {
+  // Move products to parent category first
+  const category = await db.categories.findUnique({
+    where: { id: categoryId },
+  });
+
+  await db.products.updateMany({
+    where: { categoryId },
+    data: { categoryId: category?.parentId ?? 'uncategorized' },
+  });
+
+  await db.categories.delete({ where: { id: categoryId } });
+
+  // Invalidate all category caches
+  cache.categories.revalidateTag();
+
+  // Product lists need updating
+  cache.public.products.list.revalidateTag();
+  cache.public.products.byCategory.revalidateTag({ categoryId });
+}
+```
+
+## Key Takeaways
+
+1. **Separate inventory from product data**: Cache them independently for different freshness
+2. **Cart is user-specific**: Use customer scope with session/user IDs
+3. **Publishing affects many caches**: Use a comprehensive invalidation strategy
+4. **Inventory reservation**: Track reserved quantities to prevent overselling
+5. **Category changes are structural**: May need to invalidate broad areas

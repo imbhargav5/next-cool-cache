@@ -1,0 +1,442 @@
+---
+title: User Profiles
+description: Implementing user profile caching with self-view and public-view patterns
+---
+
+# User Profiles Scenario
+
+Learn how to implement caching for a social platform where users see their own changes immediately, while others see eventually consistent data.
+
+## The Challenge
+
+User profile systems have unique caching requirements:
+
+- **Self-view**: Users editing their own profile expect instant updates
+- **Public view**: Other users viewing a profile can tolerate slight delays
+- **Admin view**: Moderators need to see current state for moderation
+- **Privacy**: Some data should only be cached for the user themselves
+
+## Schema Design
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byUsername: { _params: ['username'] as const },
+    settings: {
+      byUserId: { _params: ['userId'] as const },
+    },
+    followers: {
+      byUserId: { _params: ['userId'] as const },
+      count: { _params: ['userId'] as const },
+    },
+    following: {
+      byUserId: { _params: ['userId'] as const },
+      count: { _params: ['userId'] as const },
+    },
+    activity: {
+      byUserId: { _params: ['userId'] as const },
+    },
+  },
+  feed: {
+    byUserId: { _params: ['userId'] as const },
+    global: {},
+  },
+  notifications: {
+    byUserId: { _params: ['userId'] as const },
+    unreadCount: { _params: ['userId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'self'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Implementation Patterns
+
+### Pattern 1: Public Profile Page
+
+When viewing another user's profile:
+
+```ts
+// app/users/[username]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getPublicProfile(username: string) {
+  'use cache';
+  cache.public.users.byUsername.cacheTag({ username });
+
+  return db.users.findUnique({
+    where: { username },
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      bio: true,
+      avatarUrl: true,
+      createdAt: true,
+      // Note: email, settings excluded for privacy
+    },
+  });
+}
+
+async function getFollowerCount(userId: string) {
+  'use cache';
+  cache.public.users.followers.count.cacheTag({ userId });
+
+  return db.followers.count({ where: { followingId: userId } });
+}
+
+async function getFollowingCount(userId: string) {
+  'use cache';
+  cache.public.users.following.count.cacheTag({ userId });
+
+  return db.followers.count({ where: { followerId: userId } });
+}
+
+export default async function ProfilePage({ params }: { params: { username: string } }) {
+  const user = await getPublicProfile(params.username);
+  if (!user) notFound();
+
+  const [followers, following] = await Promise.all([
+    getFollowerCount(user.id),
+    getFollowingCount(user.id),
+  ]);
+
+  return (
+    <ProfileLayout>
+      <ProfileHeader user={user} followers={followers} following={following} />
+      <ProfileContent userId={user.id} />
+    </ProfileLayout>
+  );
+}
+```
+
+### Pattern 2: Self Profile View
+
+When viewing your own profile, use the `self` scope:
+
+```ts
+// app/profile/page.tsx
+import { cache } from '@/lib/cache';
+import { getCurrentUser } from '@/lib/auth';
+
+async function getSelfProfile(userId: string) {
+  'use cache';
+  cache.self.users.byId.cacheTag({ id: userId });
+
+  return db.users.findUnique({
+    where: { id: userId },
+    // Include private fields for self-view
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      bio: true,
+      avatarUrl: true,
+      email: true,
+      emailVerified: true,
+      createdAt: true,
+    },
+  });
+}
+
+async function getSelfSettings(userId: string) {
+  'use cache';
+  cache.self.users.settings.byUserId.cacheTag({ userId });
+
+  return db.userSettings.findUnique({
+    where: { userId },
+  });
+}
+
+export default async function MyProfilePage() {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) redirect('/login');
+
+  const [profile, settings] = await Promise.all([
+    getSelfProfile(currentUser.id),
+    getSelfSettings(currentUser.id),
+  ]);
+
+  return (
+    <ProfileLayout>
+      <EditableProfileHeader profile={profile} />
+      <ProfileSettings settings={settings} />
+    </ProfileLayout>
+  );
+}
+```
+
+### Pattern 3: Profile Update
+
+When a user updates their profile:
+
+```ts
+// app/actions/profile.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+import { getCurrentUser } from '@/lib/auth';
+
+export async function updateProfile(data: ProfileUpdateData) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) throw new Error('Unauthorized');
+
+  const user = await db.users.update({
+    where: { id: currentUser.id },
+    data,
+  });
+
+  // Self sees immediately
+  cache.self.users.byId.updateTag({ id: user.id });
+
+  // Public sees via SWR
+  cache.public.users.byId.revalidateTag({ id: user.id });
+  cache.public.users.byUsername.revalidateTag({ username: user.username });
+
+  // If username changed, also invalidate the old username
+  if (data.username && data.username !== currentUser.username) {
+    cache.public.users.byUsername.revalidateTag({ username: currentUser.username });
+  }
+
+  return user;
+}
+
+export async function updateSettings(data: SettingsUpdateData) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) throw new Error('Unauthorized');
+
+  const settings = await db.userSettings.update({
+    where: { userId: currentUser.id },
+    data,
+  });
+
+  // Settings are self-only, no public cache
+  cache.self.users.settings.byUserId.updateTag({ userId: currentUser.id });
+
+  return settings;
+}
+```
+
+### Pattern 4: Follow/Unfollow
+
+```ts
+// app/actions/follow.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+import { getCurrentUser } from '@/lib/auth';
+
+export async function followUser(targetUserId: string) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) throw new Error('Unauthorized');
+
+  await db.followers.create({
+    data: {
+      followerId: currentUser.id,
+      followingId: targetUserId,
+    },
+  });
+
+  // Update follower counts
+  cache.public.users.followers.count.revalidateTag({ userId: targetUserId });
+  cache.public.users.following.count.revalidateTag({ userId: currentUser.id });
+
+  // Update follower lists
+  cache.public.users.followers.byUserId.revalidateTag({ userId: targetUserId });
+  cache.self.users.following.byUserId.updateTag({ userId: currentUser.id });
+
+  // Update feeds
+  cache.self.feed.byUserId.revalidateTag({ userId: currentUser.id });
+
+  // Notify the target user (clear their notification cache)
+  cache.self.notifications.byUserId.revalidateTag({ userId: targetUserId });
+  cache.self.notifications.unreadCount.revalidateTag({ userId: targetUserId });
+}
+
+export async function unfollowUser(targetUserId: string) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) throw new Error('Unauthorized');
+
+  await db.followers.delete({
+    where: {
+      followerId_followingId: {
+        followerId: currentUser.id,
+        followingId: targetUserId,
+      },
+    },
+  });
+
+  // Update counts
+  cache.public.users.followers.count.revalidateTag({ userId: targetUserId });
+  cache.public.users.following.count.revalidateTag({ userId: currentUser.id });
+
+  // Update lists
+  cache.public.users.followers.byUserId.revalidateTag({ userId: targetUserId });
+  cache.self.users.following.byUserId.updateTag({ userId: currentUser.id });
+
+  // Update feed
+  cache.self.feed.byUserId.revalidateTag({ userId: currentUser.id });
+}
+```
+
+### Pattern 5: Feed Updates
+
+```ts
+// app/feed/page.tsx
+import { cache } from '@/lib/cache';
+import { getCurrentUser } from '@/lib/auth';
+
+async function getPersonalizedFeed(userId: string) {
+  'use cache';
+  cache.self.feed.byUserId.cacheTag({ userId });
+
+  // Get posts from users the current user follows
+  return db.posts.findMany({
+    where: {
+      author: {
+        followers: {
+          some: { followerId: userId },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    include: { author: true },
+  });
+}
+
+async function getGlobalFeed() {
+  'use cache';
+  cache.public.feed.global.cacheTag();
+
+  return db.posts.findMany({
+    where: { visibility: 'public' },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    include: { author: true },
+  });
+}
+```
+
+### Pattern 6: Admin Moderation
+
+```ts
+// app/admin/users/[id]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getAdminUserView(userId: string) {
+  'use cache';
+  cache.admin.users.byId.cacheTag({ id: userId });
+
+  return db.users.findUnique({
+    where: { id: userId },
+    include: {
+      settings: true,
+      reports: true,
+      suspensions: true,
+    },
+  });
+}
+
+// app/actions/moderation.ts
+'use server';
+
+export async function suspendUser(userId: string, reason: string) {
+  await db.users.update({
+    where: { id: userId },
+    data: { suspended: true, suspensionReason: reason },
+  });
+
+  // Admin sees immediately
+  cache.admin.users.byId.updateTag({ id: userId });
+
+  // Invalidate all this user's public data
+  cache.users.byId.revalidateTag({ id: userId });
+
+  // Clear their session-related caches
+  cache.self.users.byId.revalidateTag({ id: userId });
+  cache.self.feed.byUserId.revalidateTag({ userId });
+}
+```
+
+## Privacy Considerations
+
+### Separating Public and Private Data
+
+Use different cache entries for public vs private data:
+
+```ts
+// Public profile - anyone can see
+async function getPublicProfile(userId: string) {
+  'use cache';
+  cache.public.users.byId.cacheTag({ id: userId });
+
+  return db.users.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      bio: true,
+      avatarUrl: true,
+    },
+  });
+}
+
+// Private profile - only the user themselves
+async function getPrivateProfile(userId: string) {
+  'use cache';
+  cache.self.users.byId.cacheTag({ id: userId });
+
+  return db.users.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      phone: true,
+      settings: true,
+    },
+  });
+}
+```
+
+### User Data Deletion (GDPR)
+
+When a user deletes their account:
+
+```ts
+export async function deleteAccount(userId: string) {
+  // Delete user data from database
+  await db.users.delete({ where: { id: userId } });
+
+  // Invalidate ALL caches for this user across all scopes
+  cache.users.byId.revalidateTag({ id: userId });
+
+  // Invalidate related data
+  cache.feed.byUserId.revalidateTag({ userId });
+  cache.notifications.byUserId.revalidateTag({ userId });
+
+  // Invalidate global feeds that might contain their content
+  cache.public.feed.global.revalidateTag();
+}
+```
+
+## Key Takeaways
+
+1. **Self scope for user's own data**: Users expect instant updates to their own profile
+2. **Public scope for others**: Viewers of a profile can tolerate SWR
+3. **Separate public/private data**: Cache them differently for security
+4. **Update related caches on actions**: Follow/unfollow affects multiple caches
+5. **Cross-scope for deletions**: User deletion should invalidate everywhere

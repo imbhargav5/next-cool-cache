@@ -1,0 +1,343 @@
+---
+title: Cache Methods
+description: Methods available on leaf and branch cache nodes
+---
+
+# Cache Methods
+
+Cache nodes provide methods for registering cache tags and invalidating cached data. The available methods depend on whether the node is a leaf or branch.
+
+## Leaf Node Methods
+
+Leaf nodes (end points in your schema) have three methods:
+
+### cacheTag()
+
+Register cache tags inside a cached function. This tells Next.js which tags are associated with the cached data.
+
+**Signature:**
+```ts
+// Without params
+cacheTag(): void
+
+// With params
+cacheTag(params: { [key: string]: string }): void
+```
+
+**Usage:**
+```ts
+async function getUser(id: string) {
+  'use cache';
+
+  // Register the cache tag
+  cache.admin.users.byId.cacheTag({ id });
+
+  return db.users.findUnique({ where: { id } });
+}
+
+async function getAllUsers() {
+  'use cache';
+
+  // No params needed for list endpoints
+  cache.admin.users.list.cacheTag();
+
+  return db.users.findMany();
+}
+```
+
+**What happens internally:**
+
+When you call `cacheTag()`, it registers multiple hierarchical tags:
+
+```ts
+cache.admin.users.byId.cacheTag({ id: '123' });
+
+// Registers all these tags:
+// 'admin/users/byId:123' (scoped leaf)
+// 'admin/users' (scoped ancestor)
+// 'admin' (scope root)
+// 'users/byId:123' (unscoped leaf)
+// 'users' (unscoped ancestor)
+```
+
+This enables invalidation at any level of the hierarchy.
+
+### revalidateTag()
+
+Invalidate cached data using stale-while-revalidate (SWR) strategy. Users see stale data while fresh data is fetched in the background.
+
+**Signature:**
+```ts
+// Without params
+revalidateTag(): void
+
+// With params
+revalidateTag(params: { [key: string]: string }): void
+```
+
+**Usage:**
+```ts
+// In a server action
+async function updateUserPublic(id: string, data: UserData) {
+  'use server';
+
+  await db.users.update({ where: { id }, data });
+
+  // Stale-while-revalidate for public users
+  cache.public.users.byId.revalidateTag({ id });
+}
+```
+
+**Behavior:**
+- Current cached data is served immediately
+- Fresh data is fetched in the background
+- Next request gets fresh data
+- Users never see a loading state
+
+**When to use:**
+- Public-facing pages
+- Non-critical updates
+- When user experience (no loading) is priority
+
+### updateTag()
+
+Immediately expire cached data. The next request will fetch fresh data (may show loading state).
+
+**Signature:**
+```ts
+// Without params
+updateTag(): void
+
+// With params
+updateTag(params: { [key: string]: string }): void
+```
+
+**Usage:**
+```ts
+// In a server action
+async function updateUserAdmin(id: string, data: UserData) {
+  'use server';
+
+  await db.users.update({ where: { id }, data });
+
+  // Immediate update for admin view
+  cache.admin.users.byId.updateTag({ id });
+}
+```
+
+**Behavior:**
+- Cached data is expired immediately
+- Next request fetches fresh data
+- User may see a loading state
+
+**When to use:**
+- Admin dashboards
+- After user actions (they expect to see their changes)
+- Critical updates that must be reflected immediately
+
+## Branch Node Methods
+
+Branch nodes (intermediate nodes in your schema) have two methods for bulk operations:
+
+### revalidateTag()
+
+Invalidate all data under this branch using SWR.
+
+**Signature:**
+```ts
+revalidateTag(): void
+```
+
+**Usage:**
+```ts
+// Invalidate all posts
+cache.admin.blog.posts.revalidateTag();
+
+// Invalidate all blog content (posts, drafts, categories)
+cache.admin.blog.revalidateTag();
+
+// Invalidate everything in admin scope
+cache.admin.revalidateTag();
+```
+
+**Note:** Branch nodes never take parameters since they operate on the entire subtree.
+
+### updateTag()
+
+Immediately expire all data under this branch.
+
+**Signature:**
+```ts
+updateTag(): void
+```
+
+**Usage:**
+```ts
+// Immediately update all posts
+cache.admin.blog.posts.updateTag();
+
+// Immediately update all blog content
+cache.admin.blog.updateTag();
+```
+
+## The _path Property
+
+All nodes (leaf and branch) have a `_path` property for debugging:
+
+```ts
+console.log(cache.admin.blog.posts.byId._path);
+// Output: 'admin/blog/posts/byId'
+
+console.log(cache.blog.posts._path);
+// Output: 'blog/posts'
+
+console.log(cache.admin._path);
+// Output: 'admin'
+```
+
+Use this to verify your schema structure or debug caching issues.
+
+## Method Comparison
+
+| Method | Node Type | Takes Params | Behavior | User Experience |
+|--------|-----------|--------------|----------|-----------------|
+| `cacheTag` | Leaf | If defined | Registers tags | N/A (setup) |
+| `revalidateTag` | Leaf | If defined | SWR invalidation | Shows stale, loads in background |
+| `updateTag` | Leaf | If defined | Immediate expiration | May show loading |
+| `revalidateTag` | Branch | Never | SWR for subtree | Shows stale, loads in background |
+| `updateTag` | Branch | Never | Immediate for subtree | May show loading |
+
+## Parameter Handling
+
+### Leaf Nodes With Params
+
+If your schema defines `_params`, you must provide them:
+
+```ts
+// Schema
+byId: { _params: ['id'] as const }
+
+// Usage - params required
+cache.admin.users.byId.cacheTag({ id: '123' });       // Correct
+cache.admin.users.byId.cacheTag();                    // TypeScript error!
+cache.admin.users.byId.cacheTag({ userId: '123' });   // TypeScript error!
+```
+
+### Leaf Nodes Without Params
+
+If your schema uses `{}`, no params are accepted:
+
+```ts
+// Schema
+list: {}
+
+// Usage - no params
+cache.admin.users.list.cacheTag();             // Correct
+cache.admin.users.list.cacheTag({ id: '1' });  // TypeScript error!
+```
+
+### Multiple Params
+
+All params must be provided:
+
+```ts
+// Schema
+byOwnerAndSlug: { _params: ['ownerId', 'slug'] as const }
+
+// Usage - all params required
+cache.admin.projects.byOwnerAndSlug.cacheTag({
+  ownerId: 'user-1',
+  slug: 'my-project',
+});
+```
+
+## Tag Format
+
+Tags are built as path strings with optional param suffixes:
+
+| Schema Path | Params | Resulting Tag |
+|-------------|--------|---------------|
+| `admin.users.list` | None | `admin/users/list` |
+| `admin.users.byId` | `{ id: '123' }` | `admin/users/byId:123` |
+| `users.byId` (unscoped) | `{ id: '123' }` | `users/byId:123` |
+| `admin.comments.byPostAndUser` | `{ postId: 'p1', userId: 'u1' }` | `admin/comments/byPostAndUser:p1:u1` |
+
+## Examples
+
+### Complete CRUD Pattern
+
+```ts
+// Create
+async function createPost(data: PostData) {
+  const post = await db.posts.create({ data });
+
+  // Invalidate list caches
+  cache.admin.blog.posts.list.updateTag();
+  cache.public.blog.posts.list.revalidateTag();
+
+  return post;
+}
+
+// Read (cached)
+async function getPost(id: string) {
+  'use cache';
+  cache.public.blog.posts.byId.cacheTag({ id });
+
+  return db.posts.findUnique({ where: { id } });
+}
+
+// Update
+async function updatePost(id: string, data: PostData) {
+  const post = await db.posts.update({ where: { id }, data });
+
+  // Invalidate specific post
+  cache.admin.blog.posts.byId.updateTag({ id });
+  cache.public.blog.posts.byId.revalidateTag({ id });
+
+  // Maybe invalidate list if title/order changed
+  if (data.title) {
+    cache.public.blog.posts.list.revalidateTag();
+  }
+
+  return post;
+}
+
+// Delete
+async function deletePost(id: string) {
+  await db.posts.delete({ where: { id } });
+
+  // Invalidate specific and lists
+  cache.admin.blog.posts.byId.updateTag({ id });
+  cache.public.blog.posts.byId.updateTag({ id });
+  cache.admin.blog.posts.list.updateTag();
+  cache.public.blog.posts.list.revalidateTag();
+}
+```
+
+### Mixed Strategy Pattern
+
+```ts
+async function publishPost(postId: string) {
+  const post = await db.posts.update({
+    where: { id: postId },
+    data: { status: 'published', publishedAt: new Date() },
+  });
+
+  // Admin sees immediately (updateTag)
+  cache.admin.blog.posts.byId.updateTag({ id: postId });
+  cache.admin.blog.drafts.list.updateTag();
+  cache.admin.blog.posts.list.updateTag();
+
+  // Public sees via SWR (revalidateTag)
+  cache.public.blog.posts.list.revalidateTag();
+  cache.public.blog.posts.bySlug.revalidateTag({ slug: post.slug });
+
+  return post;
+}
+```
+
+## See Also
+
+- [createCache()](/docs/api-reference/create-cache) - Creating a cache object
+- [Tag Utilities](/docs/api-reference/tag-utilities) - Low-level tag building functions
+- [Hierarchical Tagging](/docs/concepts/hierarchical-tagging) - How hierarchical tags work

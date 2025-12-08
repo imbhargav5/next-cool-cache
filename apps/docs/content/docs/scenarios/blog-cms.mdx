@@ -1,0 +1,396 @@
+---
+title: Blog CMS
+description: Building a blog content management system with intelligent caching
+---
+
+# Blog CMS Scenario
+
+Learn how to implement caching for a blog content management system where editors need instant feedback while public readers enjoy fast, cached pages.
+
+## The Challenge
+
+A blog CMS has different user types with different needs:
+
+- **Editors**: Create and edit posts, need to see changes immediately
+- **Authors**: Write their own posts, need to see their drafts
+- **Public readers**: View published content, should never see loading states
+
+Each audience needs a different caching strategy.
+
+## Schema Design
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      featured: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+      byCategory: { _params: ['categoryId'] as const },
+    },
+    drafts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+    },
+    categories: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+    },
+    tags: {
+      list: {},
+      bySlug: { _params: ['slug'] as const },
+    },
+  },
+  authors: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byUsername: { _params: ['username'] as const },
+  },
+  comments: {
+    byPost: { _params: ['postId'] as const },
+    count: { _params: ['postId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'author'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Implementation Patterns
+
+### Pattern 1: Fetching Published Posts
+
+Public blog listing with aggressive caching:
+
+```ts
+// app/blog/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getPublishedPosts() {
+  'use cache';
+  cache.public.blog.posts.list.cacheTag();
+
+  return db.posts.findMany({
+    where: { status: 'published' },
+    orderBy: { publishedAt: 'desc' },
+    take: 20,
+  });
+}
+
+async function getFeaturedPosts() {
+  'use cache';
+  cache.public.blog.posts.featured.cacheTag();
+
+  return db.posts.findMany({
+    where: { status: 'published', featured: true },
+    take: 5,
+  });
+}
+
+export default async function BlogPage() {
+  const [posts, featured] = await Promise.all([
+    getPublishedPosts(),
+    getFeaturedPosts(),
+  ]);
+
+  return (
+    <div>
+      <FeaturedPosts posts={featured} />
+      <PostList posts={posts} />
+    </div>
+  );
+}
+```
+
+### Pattern 2: Single Post Page
+
+```ts
+// app/blog/[slug]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getPostBySlug(slug: string) {
+  'use cache';
+  cache.public.blog.posts.bySlug.cacheTag({ slug });
+
+  return db.posts.findUnique({
+    where: { slug, status: 'published' },
+    include: { author: true, category: true },
+  });
+}
+
+async function getComments(postId: string) {
+  'use cache';
+  cache.public.comments.byPost.cacheTag({ postId });
+
+  return db.comments.findMany({
+    where: { postId, approved: true },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+export default async function PostPage({ params }: { params: { slug: string } }) {
+  const post = await getPostBySlug(params.slug);
+  if (!post) notFound();
+
+  const comments = await getComments(post.id);
+
+  return (
+    <article>
+      <PostContent post={post} />
+      <CommentSection comments={comments} />
+    </article>
+  );
+}
+```
+
+### Pattern 3: Publishing a Draft
+
+When an editor publishes a draft, multiple caches need updating:
+
+```ts
+// app/actions/posts.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function publishPost(postId: string) {
+  const post = await db.posts.update({
+    where: { id: postId },
+    data: {
+      status: 'published',
+      publishedAt: new Date(),
+    },
+  });
+
+  // Editor sees changes immediately
+  cache.admin.blog.posts.byId.updateTag({ id: postId });
+  cache.admin.blog.drafts.list.updateTag();
+  cache.admin.blog.posts.list.updateTag();
+
+  // Author sees their post is published
+  cache.author.blog.drafts.byAuthor.updateTag({ authorId: post.authorId });
+  cache.author.blog.posts.byAuthor.updateTag({ authorId: post.authorId });
+
+  // Public gets stale-while-revalidate
+  cache.public.blog.posts.list.revalidateTag();
+  cache.public.blog.posts.featured.revalidateTag();
+  cache.public.blog.posts.bySlug.revalidateTag({ slug: post.slug });
+  cache.public.blog.posts.byCategory.revalidateTag({ categoryId: post.categoryId });
+
+  return post;
+}
+```
+
+### Pattern 4: Editing a Post
+
+```ts
+// app/actions/posts.ts
+'use server';
+
+export async function updatePost(postId: string, data: PostUpdateData) {
+  const post = await db.posts.update({
+    where: { id: postId },
+    data,
+  });
+
+  // Editor sees immediately
+  cache.admin.blog.posts.byId.updateTag({ id: postId });
+
+  // If published, update public caches
+  if (post.status === 'published') {
+    cache.public.blog.posts.byId.revalidateTag({ id: postId });
+    cache.public.blog.posts.bySlug.revalidateTag({ slug: post.slug });
+
+    // If title/excerpt changed, lists need updating
+    if (data.title || data.excerpt) {
+      cache.public.blog.posts.list.revalidateTag();
+    }
+
+    // If category changed, category pages need updating
+    if (data.categoryId) {
+      cache.public.blog.posts.byCategory.revalidateTag({ categoryId: data.categoryId });
+    }
+  }
+
+  return post;
+}
+```
+
+### Pattern 5: Bulk Operations
+
+Unpublishing all posts by an author (e.g., when author is banned):
+
+```ts
+// app/actions/authors.ts
+'use server';
+
+export async function banAuthor(authorId: string) {
+  // Unpublish all their posts
+  await db.posts.updateMany({
+    where: { authorId },
+    data: { status: 'draft' },
+  });
+
+  // Delete their comments
+  await db.comments.deleteMany({
+    where: { authorId },
+  });
+
+  // Mark author as banned
+  await db.authors.update({
+    where: { id: authorId },
+    data: { banned: true },
+  });
+
+  // Invalidate all blog data - nuclear option for bulk change
+  cache.admin.blog.revalidateTag();
+
+  // Public needs full refresh of affected areas
+  cache.public.blog.posts.revalidateTag();
+  cache.public.authors.byId.revalidateTag({ id: authorId });
+
+  // Invalidate all comment caches for this author's posts
+  // (In practice, you'd track which posts and invalidate specifically)
+}
+```
+
+### Pattern 6: Category Reorganization
+
+```ts
+// app/actions/categories.ts
+'use server';
+
+export async function mergeCategories(sourceId: string, targetId: string) {
+  // Move all posts to target category
+  await db.posts.updateMany({
+    where: { categoryId: sourceId },
+    data: { categoryId: targetId },
+  });
+
+  // Delete source category
+  await db.categories.delete({
+    where: { id: sourceId },
+  });
+
+  // Admin sees immediately
+  cache.admin.blog.categories.updateTag();
+  cache.admin.blog.posts.updateTag();
+
+  // Public gets SWR
+  cache.public.blog.categories.revalidateTag();
+  cache.public.blog.posts.byCategory.revalidateTag({ categoryId: sourceId });
+  cache.public.blog.posts.byCategory.revalidateTag({ categoryId: targetId });
+}
+```
+
+## Admin Dashboard
+
+The admin dashboard needs real-time data:
+
+```ts
+// app/admin/posts/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getAdminPostsList() {
+  'use cache';
+  cache.admin.blog.posts.list.cacheTag();
+
+  return db.posts.findMany({
+    orderBy: { updatedAt: 'desc' },
+    include: { author: true },
+  });
+}
+
+async function getDraftsList() {
+  'use cache';
+  cache.admin.blog.drafts.list.cacheTag();
+
+  return db.posts.findMany({
+    where: { status: 'draft' },
+    orderBy: { updatedAt: 'desc' },
+  });
+}
+
+export default async function AdminPostsPage() {
+  const [posts, drafts] = await Promise.all([
+    getAdminPostsList(),
+    getDraftsList(),
+  ]);
+
+  return (
+    <AdminLayout>
+      <DraftsSection drafts={drafts} />
+      <AllPostsSection posts={posts} />
+    </AdminLayout>
+  );
+}
+```
+
+## Complete Working Example
+
+Here's a complete cache configuration with all the patterns:
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      featured: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+      byCategory: { _params: ['categoryId'] as const },
+    },
+    drafts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+    },
+    categories: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+    },
+  },
+  authors: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+  comments: {
+    byPost: { _params: ['postId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'author'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Key Takeaways
+
+1. **Separate concerns by scope**: Editors, authors, and readers each have different cache strategies
+2. **Be surgical with invalidation**: Only invalidate what actually changed
+3. **Use SWR for public**: Readers should never see loading states for cached content
+4. **Use update for editors**: Editors expect immediate feedback
+5. **Branch invalidation for bulk**: When many things change, invalidate at the branch level

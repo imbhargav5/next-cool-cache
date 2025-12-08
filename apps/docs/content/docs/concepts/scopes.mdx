@@ -1,0 +1,254 @@
+---
+title: Understanding Scopes
+description: Master multi-scope caching strategies for different user audiences
+---
+
+# Understanding Scopes
+
+Scopes allow you to have different cache strategies for the same data based on who's viewing it. This is essential for applications where admins need instant updates while public users benefit from aggressive caching.
+
+## What Are Scopes?
+
+A scope is a namespace that prefixes your cache tags. Each scope can have its own invalidation strategy:
+
+```ts
+const scopes = ['admin', 'public', 'user'] as const;
+
+// Creates these namespaces:
+// - cache.admin.* - Tags prefixed with 'admin/'
+// - cache.public.* - Tags prefixed with 'public/'
+// - cache.user.* - Tags prefixed with 'user/'
+// - cache.* (unscoped) - No prefix, affects all scopes
+```
+
+## Common Scope Patterns
+
+### Admin / Public
+
+The most common pattern separates admin users from public visitors:
+
+```ts
+const scopes = ['admin', 'public'] as const;
+```
+
+- **admin**: Editors, moderators, content managers
+  - Use `updateTag()` for instant updates
+  - Accept occasional loading states
+
+- **public**: Anonymous visitors, logged-out users
+  - Use `revalidateTag()` for stale-while-revalidate
+  - Never show loading states for cached content
+
+### Admin / Public / User
+
+Add a user scope for personalized content:
+
+```ts
+const scopes = ['admin', 'public', 'user'] as const;
+```
+
+- **user**: Authenticated users viewing their own data
+  - Their own profile, settings, dashboard
+  - May want faster updates than public users
+
+### Per-Tenant Scopes
+
+For multi-tenant applications, you might use dynamic scopes:
+
+```ts
+const scopes = ['superadmin', 'tenant-admin', 'member'] as const;
+```
+
+## Scope Selection Strategy
+
+### When to Use updateTag()
+
+`updateTag()` expires the cache immediately. The next request fetches fresh data.
+
+```ts
+// Admin just edited a post - they should see changes immediately
+cache.admin.posts.byId.updateTag({ id: '123' });
+```
+
+**Use for:**
+- Admin dashboards
+- Content editors after saving
+- Any time the user just made a change and expects to see it
+
+**Trade-off:** May show a loading state on next request.
+
+### When to Use revalidateTag()
+
+`revalidateTag()` serves stale content while fetching fresh data in the background.
+
+```ts
+// Public users will see stale data briefly, then fresh data
+cache.public.posts.byId.revalidateTag({ id: '123' });
+```
+
+**Use for:**
+- Public-facing pages
+- End-user experiences where avoiding loading states is priority
+- High-traffic pages where performance matters
+
+**Trade-off:** Users may briefly see stale data.
+
+### Combined Strategy
+
+Often you'll use both for the same action:
+
+```ts
+async function updatePost(postId: string, data: PostData) {
+  await db.posts.update({ where: { id: postId }, data });
+
+  // Admin sees changes immediately
+  cache.admin.posts.byId.updateTag({ id: postId });
+
+  // Public sees stale-while-revalidate
+  cache.public.posts.byId.revalidateTag({ id: postId });
+}
+```
+
+## Cross-Scope Operations
+
+Sometimes you need to invalidate data across all scopes. Access resources without a scope prefix:
+
+```ts
+// Invalidate user data in ALL scopes
+cache.users.byId.revalidateTag({ id: '123' });
+
+// This invalidates:
+// - admin/users/byId:123
+// - public/users/byId:123
+// - user/users/byId:123
+// - users/byId:123 (unscoped)
+```
+
+### When to Use Cross-Scope
+
+- **User data changes**: When a user updates their profile, all representations should update
+- **Security events**: When a user is banned or permissions change
+- **Data deletion**: When data is removed from the system entirely
+- **Global settings**: When a change affects all users
+
+```ts
+async function deleteUser(userId: string) {
+  await db.users.delete({ where: { id: userId } });
+
+  // Invalidate everywhere - this user's data should be gone
+  cache.users.byId.revalidateTag({ id: userId });
+  cache.posts.byAuthor.revalidateTag({ authorId: userId });
+}
+```
+
+## Tag Hierarchy with Scopes
+
+When you call `cacheTag()`, the system registers hierarchical tags:
+
+```ts
+cache.admin.blog.posts.byId.cacheTag({ id: '123' });
+```
+
+This registers all these tags:
+```
+admin/blog/posts/byId:123  (scoped leaf)
+admin/blog/posts           (scoped ancestor)
+admin/blog                 (scoped ancestor)
+admin                      (scope root)
+blog/posts/byId:123        (unscoped leaf)
+blog/posts                 (unscoped ancestor)
+blog                       (unscoped ancestor)
+```
+
+This allows flexible invalidation:
+
+```ts
+// Just this post in admin scope
+cache.admin.blog.posts.byId.revalidateTag({ id: '123' });
+
+// All posts in admin scope
+cache.admin.blog.posts.revalidateTag();
+
+// All blog data in admin scope
+cache.admin.blog.revalidateTag();
+
+// All admin data
+cache.admin.revalidateTag();
+
+// This post across all scopes
+cache.blog.posts.byId.revalidateTag({ id: '123' });
+```
+
+## Scope Design Decisions
+
+### How Many Scopes?
+
+Start with the minimum needed:
+
+| Application Type | Suggested Scopes |
+|------------------|------------------|
+| Blog | `['admin', 'public']` |
+| SaaS Dashboard | `['admin', 'user']` |
+| E-commerce | `['admin', 'public', 'customer']` |
+| Multi-tenant | `['superadmin', 'tenant-admin', 'member']` |
+
+### Naming Scopes
+
+Use descriptive names that match your application's vocabulary:
+
+```ts
+// Generic
+const scopes = ['admin', 'public', 'user'] as const;
+
+// Application-specific
+const scopes = ['editor', 'subscriber', 'anonymous'] as const;
+const scopes = ['merchant', 'customer', 'guest'] as const;
+```
+
+## Real-World Example
+
+Here's a complete example for a blog with editors and readers:
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  posts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    bySlug: { _params: ['slug'] as const },
+  },
+  drafts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+
+const scopes = ['editor', 'public'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+
+// Usage in server actions
+export async function publishPost(postId: string) {
+  await db.posts.update({
+    where: { id: postId },
+    data: { status: 'published' },
+  });
+
+  // Editor sees immediately
+  cache.editor.posts.byId.updateTag({ id: postId });
+  cache.editor.drafts.byId.updateTag({ id: postId });
+  cache.editor.posts.list.updateTag();
+  cache.editor.drafts.list.updateTag();
+
+  // Public readers see via SWR
+  cache.public.posts.byId.revalidateTag({ id: postId });
+  cache.public.posts.list.revalidateTag();
+}
+```

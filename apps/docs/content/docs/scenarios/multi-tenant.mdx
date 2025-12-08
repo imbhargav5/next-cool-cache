@@ -1,0 +1,516 @@
+---
+title: Multi-tenant App
+description: Implementing per-tenant cache isolation in a multi-tenant SaaS application
+---
+
+# Multi-tenant App Scenario
+
+Learn how to implement caching for a multi-tenant SaaS application where data must be isolated between tenants while administrators can manage across tenants.
+
+## The Challenge
+
+Multi-tenant applications have unique caching concerns:
+
+- **Tenant isolation**: Data from one tenant must never leak to another
+- **Per-tenant caching**: Each tenant has their own cache namespace
+- **Cross-tenant admin**: Super admins need to view data across tenants
+- **Tenant settings**: Configuration that affects all members
+- **Multi-param tags**: Often need to identify by both tenant and resource
+
+## Schema Design
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  tenants: {
+    list: {},
+    byId: { _params: ['tenantId'] as const },
+    bySlug: { _params: ['slug'] as const },
+    settings: {
+      byTenantId: { _params: ['tenantId'] as const },
+    },
+    billing: {
+      byTenantId: { _params: ['tenantId'] as const },
+    },
+  },
+  projects: {
+    list: {},
+    byId: { _params: ['projectId'] as const },
+    byTenant: { _params: ['tenantId'] as const },
+    byTenantAndSlug: { _params: ['tenantId', 'slug'] as const },
+  },
+  members: {
+    byTenant: { _params: ['tenantId'] as const },
+    byTenantAndUser: { _params: ['tenantId', 'userId'] as const },
+    byUser: { _params: ['userId'] as const },
+  },
+  invitations: {
+    byTenant: { _params: ['tenantId'] as const },
+    byId: { _params: ['invitationId'] as const },
+  },
+  audit: {
+    byTenant: { _params: ['tenantId'] as const },
+    byTenantAndDate: { _params: ['tenantId', 'date'] as const },
+  },
+} as const;
+
+const scopes = ['superadmin', 'tenant-admin', 'member'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Implementation Patterns
+
+### Pattern 1: Tenant Dashboard
+
+Each tenant has their own isolated view:
+
+```ts
+// app/[tenant]/dashboard/page.tsx
+import { cache } from '@/lib/cache';
+import { getTenantFromSlug, requireTenantAccess } from '@/lib/tenant';
+
+async function getTenantOverview(tenantId: string) {
+  'use cache';
+  cache['tenant-admin'].tenants.byId.cacheTag({ tenantId });
+
+  return db.tenants.findUnique({
+    where: { id: tenantId },
+    include: {
+      _count: {
+        select: {
+          projects: true,
+          members: true,
+        },
+      },
+    },
+  });
+}
+
+async function getTenantProjects(tenantId: string) {
+  'use cache';
+  cache['tenant-admin'].projects.byTenant.cacheTag({ tenantId });
+
+  return db.projects.findMany({
+    where: { tenantId },
+    orderBy: { updatedAt: 'desc' },
+    take: 10,
+  });
+}
+
+async function getTenantMembers(tenantId: string) {
+  'use cache';
+  cache['tenant-admin'].members.byTenant.cacheTag({ tenantId });
+
+  return db.members.findMany({
+    where: { tenantId },
+    include: { user: true },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+export default async function TenantDashboard({
+  params,
+}: {
+  params: { tenant: string };
+}) {
+  const tenant = await getTenantFromSlug(params.tenant);
+  await requireTenantAccess(tenant.id);
+
+  const [overview, projects, members] = await Promise.all([
+    getTenantOverview(tenant.id),
+    getTenantProjects(tenant.id),
+    getTenantMembers(tenant.id),
+  ]);
+
+  return (
+    <TenantLayout tenant={tenant}>
+      <OverviewStats overview={overview} />
+      <RecentProjects projects={projects} />
+      <TeamMembers members={members} />
+    </TenantLayout>
+  );
+}
+```
+
+### Pattern 2: Project Access with Multi-Param Tags
+
+```ts
+// app/[tenant]/projects/[slug]/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getProject(tenantId: string, slug: string) {
+  'use cache';
+  cache.member.projects.byTenantAndSlug.cacheTag({ tenantId, slug });
+
+  return db.projects.findUnique({
+    where: {
+      tenantId_slug: { tenantId, slug },
+    },
+    include: {
+      members: { include: { user: true } },
+      settings: true,
+    },
+  });
+}
+
+export default async function ProjectPage({
+  params,
+}: {
+  params: { tenant: string; slug: string };
+}) {
+  const tenant = await getTenantFromSlug(params.tenant);
+  await requireTenantAccess(tenant.id);
+
+  const project = await getProject(tenant.id, params.slug);
+  if (!project) notFound();
+
+  return (
+    <ProjectLayout project={project}>
+      <ProjectContent project={project} />
+    </ProjectLayout>
+  );
+}
+```
+
+### Pattern 3: Member Management
+
+```ts
+// app/actions/members.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+import { requireTenantAdmin } from '@/lib/tenant';
+
+export async function inviteMember(tenantId: string, email: string, role: string) {
+  await requireTenantAdmin(tenantId);
+
+  const invitation = await db.invitations.create({
+    data: {
+      tenantId,
+      email,
+      role,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // Update invitation list
+  cache['tenant-admin'].invitations.byTenant.updateTag({ tenantId });
+
+  return invitation;
+}
+
+export async function acceptInvitation(invitationId: string, userId: string) {
+  const invitation = await db.invitations.findUnique({
+    where: { id: invitationId },
+  });
+
+  if (!invitation || invitation.expiresAt < new Date()) {
+    throw new Error('Invalid or expired invitation');
+  }
+
+  // Create membership
+  await db.members.create({
+    data: {
+      tenantId: invitation.tenantId,
+      userId,
+      role: invitation.role,
+    },
+  });
+
+  // Delete invitation
+  await db.invitations.delete({ where: { id: invitationId } });
+
+  // Update caches
+  cache['tenant-admin'].members.byTenant.updateTag({ tenantId: invitation.tenantId });
+  cache['tenant-admin'].invitations.byTenant.updateTag({ tenantId: invitation.tenantId });
+  cache.member.members.byUser.updateTag({ userId });
+
+  // Update tenant overview
+  cache['tenant-admin'].tenants.byId.revalidateTag({ tenantId: invitation.tenantId });
+}
+
+export async function removeMember(tenantId: string, userId: string) {
+  await requireTenantAdmin(tenantId);
+
+  await db.members.delete({
+    where: {
+      tenantId_userId: { tenantId, userId },
+    },
+  });
+
+  // Update caches
+  cache['tenant-admin'].members.byTenant.updateTag({ tenantId });
+  cache['tenant-admin'].members.byTenantAndUser.updateTag({ tenantId, userId });
+  cache.member.members.byUser.updateTag({ userId });
+  cache['tenant-admin'].tenants.byId.revalidateTag({ tenantId });
+}
+
+export async function updateMemberRole(tenantId: string, userId: string, newRole: string) {
+  await requireTenantAdmin(tenantId);
+
+  await db.members.update({
+    where: {
+      tenantId_userId: { tenantId, userId },
+    },
+    data: { role: newRole },
+  });
+
+  // Update member caches
+  cache['tenant-admin'].members.byTenant.updateTag({ tenantId });
+  cache['tenant-admin'].members.byTenantAndUser.updateTag({ tenantId, userId });
+}
+```
+
+### Pattern 4: Tenant Settings
+
+```ts
+// app/[tenant]/settings/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getTenantSettings(tenantId: string) {
+  'use cache';
+  cache['tenant-admin'].tenants.settings.byTenantId.cacheTag({ tenantId });
+
+  return db.tenantSettings.findUnique({
+    where: { tenantId },
+  });
+}
+
+// app/actions/settings.ts
+'use server';
+
+export async function updateTenantSettings(tenantId: string, data: SettingsData) {
+  await requireTenantAdmin(tenantId);
+
+  const settings = await db.tenantSettings.update({
+    where: { tenantId },
+    data,
+  });
+
+  // Settings visible to tenant admin immediately
+  cache['tenant-admin'].tenants.settings.byTenantId.updateTag({ tenantId });
+
+  // If settings affect all members (e.g., feature flags), update member scope too
+  if (data.features) {
+    cache.member.tenants.settings.byTenantId.revalidateTag({ tenantId });
+  }
+
+  return settings;
+}
+```
+
+### Pattern 5: Super Admin Cross-Tenant View
+
+```ts
+// app/admin/tenants/page.tsx
+import { cache } from '@/lib/cache';
+import { requireSuperAdmin } from '@/lib/auth';
+
+async function getAllTenants() {
+  'use cache';
+  cache.superadmin.tenants.list.cacheTag();
+
+  return db.tenants.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: {
+      _count: {
+        select: { members: true, projects: true },
+      },
+      billing: true,
+    },
+  });
+}
+
+export default async function AdminTenantsPage() {
+  await requireSuperAdmin();
+
+  const tenants = await getAllTenants();
+
+  return (
+    <AdminLayout>
+      <TenantsList tenants={tenants} />
+    </AdminLayout>
+  );
+}
+
+// app/admin/tenants/[id]/page.tsx
+async function getAdminTenantView(tenantId: string) {
+  'use cache';
+  cache.superadmin.tenants.byId.cacheTag({ tenantId });
+
+  return db.tenants.findUnique({
+    where: { id: tenantId },
+    include: {
+      members: { include: { user: true } },
+      projects: true,
+      billing: true,
+      settings: true,
+    },
+  });
+}
+```
+
+### Pattern 6: Cross-Tenant Operations
+
+Super admin operations that affect multiple tenants:
+
+```ts
+// app/actions/admin.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+import { requireSuperAdmin } from '@/lib/auth';
+
+export async function suspendTenant(tenantId: string, reason: string) {
+  await requireSuperAdmin();
+
+  await db.tenants.update({
+    where: { id: tenantId },
+    data: {
+      status: 'suspended',
+      suspensionReason: reason,
+    },
+  });
+
+  // Update super admin view
+  cache.superadmin.tenants.byId.updateTag({ tenantId });
+  cache.superadmin.tenants.list.revalidateTag();
+
+  // Invalidate all tenant-scoped caches
+  cache['tenant-admin'].tenants.byId.updateTag({ tenantId });
+  cache['tenant-admin'].projects.byTenant.updateTag({ tenantId });
+  cache.member.projects.byTenant.updateTag({ tenantId });
+}
+
+export async function deleteTenant(tenantId: string) {
+  await requireSuperAdmin();
+
+  // Delete all tenant data
+  await db.tenants.delete({ where: { id: tenantId } });
+
+  // Invalidate all caches for this tenant across all scopes
+  cache.tenants.byId.revalidateTag({ tenantId });
+  cache.projects.byTenant.revalidateTag({ tenantId });
+  cache.members.byTenant.revalidateTag({ tenantId });
+
+  // Update super admin list
+  cache.superadmin.tenants.list.updateTag();
+}
+
+export async function migrateTenantsToNewPlan(oldPlanId: string, newPlanId: string) {
+  await requireSuperAdmin();
+
+  const affectedTenants = await db.tenants.findMany({
+    where: { planId: oldPlanId },
+  });
+
+  await db.tenants.updateMany({
+    where: { planId: oldPlanId },
+    data: { planId: newPlanId },
+  });
+
+  // Invalidate billing for all affected tenants
+  for (const tenant of affectedTenants) {
+    cache['tenant-admin'].tenants.billing.byTenantId.revalidateTag({
+      tenantId: tenant.id,
+    });
+  }
+
+  // Update super admin tenant list
+  cache.superadmin.tenants.list.revalidateTag();
+}
+```
+
+### Pattern 7: Audit Log
+
+```ts
+// lib/audit.ts
+import { cache } from '@/lib/cache';
+
+async function getAuditLog(tenantId: string, date?: string) {
+  'use cache';
+
+  if (date) {
+    cache['tenant-admin'].audit.byTenantAndDate.cacheTag({ tenantId, date });
+  } else {
+    cache['tenant-admin'].audit.byTenant.cacheTag({ tenantId });
+  }
+
+  return db.auditLog.findMany({
+    where: {
+      tenantId,
+      ...(date && {
+        createdAt: {
+          gte: new Date(date),
+          lt: new Date(new Date(date).getTime() + 24 * 60 * 60 * 1000),
+        },
+      }),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: { user: true },
+  });
+}
+
+// When logging audit events
+export async function logAuditEvent(
+  tenantId: string,
+  userId: string,
+  action: string,
+  details: object
+) {
+  await db.auditLog.create({
+    data: { tenantId, userId, action, details },
+  });
+
+  // Invalidate today's audit cache
+  const today = new Date().toISOString().split('T')[0];
+  cache['tenant-admin'].audit.byTenantAndDate.revalidateTag({ tenantId, date: today });
+  cache['tenant-admin'].audit.byTenant.revalidateTag({ tenantId });
+}
+```
+
+## Tenant Context Helper
+
+Create a helper to ensure tenant-scoped caching:
+
+```ts
+// lib/tenant-cache.ts
+import { cache } from '@/lib/cache';
+
+export function getTenantCache(tenantId: string) {
+  return {
+    projects: {
+      cacheTag: () => cache.member.projects.byTenant.cacheTag({ tenantId }),
+      revalidate: () => cache.member.projects.byTenant.revalidateTag({ tenantId }),
+      update: () => cache.member.projects.byTenant.updateTag({ tenantId }),
+    },
+    members: {
+      cacheTag: () => cache.member.members.byTenant.cacheTag({ tenantId }),
+      revalidate: () => cache.member.members.byTenant.revalidateTag({ tenantId }),
+      update: () => cache.member.members.byTenant.updateTag({ tenantId }),
+    },
+    // ... more helpers
+  };
+}
+
+// Usage
+const tenantCache = getTenantCache(currentTenant.id);
+tenantCache.projects.cacheTag();
+```
+
+## Key Takeaways
+
+1. **Multi-param tags**: Use `tenantId` + resource ID patterns for isolation
+2. **Scope by role**: `superadmin` sees all, `tenant-admin` sees their tenant, `member` sees limited data
+3. **Cross-tenant operations**: Super admin invalidations should cascade properly
+4. **Settings propagation**: Tenant settings may need to invalidate member caches
+5. **Audit logging**: Cache by tenant and date for efficient invalidation

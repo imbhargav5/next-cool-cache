@@ -1,0 +1,426 @@
+---
+title: SaaS Billing
+description: Managing cache for pricing, subscriptions, and billing in a SaaS application
+---
+
+# SaaS Billing Scenario
+
+Learn how to implement caching for a SaaS product with public pricing pages, subscription management, and billing operations.
+
+## The Challenge
+
+SaaS billing involves multiple caching concerns:
+
+- **Pricing pages**: Public, should be highly cached but update instantly when prices change
+- **Subscription status**: Affects feature access, needs to reflect changes quickly
+- **Invoice data**: Sensitive, should only be visible to the right users
+- **Usage metrics**: May be shown in real-time or with some delay
+
+## Schema Design
+
+```ts
+// lib/cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  pricing: {
+    plans: {
+      list: {},
+      byId: { _params: ['planId'] as const },
+      byTier: { _params: ['tier'] as const },
+    },
+    features: {
+      list: {},
+      byPlanId: { _params: ['planId'] as const },
+    },
+    addons: {
+      list: {},
+      byId: { _params: ['addonId'] as const },
+    },
+  },
+  subscriptions: {
+    byOrgId: { _params: ['orgId'] as const },
+    byCustomerId: { _params: ['customerId'] as const },
+  },
+  invoices: {
+    list: {},
+    byId: { _params: ['invoiceId'] as const },
+    byOrgId: { _params: ['orgId'] as const },
+    upcoming: { _params: ['orgId'] as const },
+  },
+  usage: {
+    byOrgId: { _params: ['orgId'] as const },
+    byOrgAndPeriod: { _params: ['orgId', 'period'] as const },
+    current: { _params: ['orgId'] as const },
+  },
+  limits: {
+    byOrgId: { _params: ['orgId'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public', 'customer'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+## Implementation Patterns
+
+### Pattern 1: Public Pricing Page
+
+The pricing page should be heavily cached for performance:
+
+```ts
+// app/pricing/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getPricingPlans() {
+  'use cache';
+  cache.public.pricing.plans.list.cacheTag();
+
+  return db.plans.findMany({
+    where: { active: true },
+    orderBy: { price: 'asc' },
+    include: { features: true },
+  });
+}
+
+async function getAddons() {
+  'use cache';
+  cache.public.pricing.addons.list.cacheTag();
+
+  return db.addons.findMany({
+    where: { active: true },
+  });
+}
+
+export default async function PricingPage() {
+  const [plans, addons] = await Promise.all([
+    getPricingPlans(),
+    getAddons(),
+  ]);
+
+  return (
+    <PricingLayout>
+      <PricingTable plans={plans} />
+      <AddonsSection addons={addons} />
+    </PricingLayout>
+  );
+}
+```
+
+### Pattern 2: Updating Pricing
+
+When an admin updates pricing, public pages should update immediately:
+
+```ts
+// app/actions/pricing.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function updatePlanPrice(planId: string, newPrice: number) {
+  const plan = await db.plans.update({
+    where: { id: planId },
+    data: { price: newPrice },
+  });
+
+  // Admin sees immediately
+  cache.admin.pricing.plans.byId.updateTag({ planId });
+  cache.admin.pricing.plans.list.updateTag();
+
+  // Public pricing page should update immediately too
+  // (pricing is important to keep consistent)
+  cache.public.pricing.plans.byId.updateTag({ planId });
+  cache.public.pricing.plans.list.updateTag();
+
+  return plan;
+}
+
+export async function createNewPlan(data: PlanData) {
+  const plan = await db.plans.create({ data });
+
+  // Invalidate plan lists
+  cache.admin.pricing.plans.list.updateTag();
+  cache.public.pricing.plans.list.updateTag();
+
+  return plan;
+}
+```
+
+### Pattern 3: Subscription Status
+
+Subscription status affects feature access and must be current:
+
+```ts
+// lib/subscription.ts
+import { cache } from '@/lib/cache';
+
+async function getSubscription(orgId: string) {
+  'use cache';
+  cache.customer.subscriptions.byOrgId.cacheTag({ orgId });
+
+  return db.subscriptions.findUnique({
+    where: { orgId },
+    include: { plan: true },
+  });
+}
+
+async function getUsageLimits(orgId: string) {
+  'use cache';
+  cache.customer.limits.byOrgId.cacheTag({ orgId });
+
+  const subscription = await db.subscriptions.findUnique({
+    where: { orgId },
+    include: { plan: { include: { limits: true } } },
+  });
+
+  return subscription?.plan.limits ?? null;
+}
+
+// Middleware or hook to check access
+export async function canAccessFeature(orgId: string, feature: string) {
+  const subscription = await getSubscription(orgId);
+  const limits = await getUsageLimits(orgId);
+
+  if (!subscription || subscription.status !== 'active') {
+    return false;
+  }
+
+  return subscription.plan.features.includes(feature);
+}
+```
+
+### Pattern 4: Subscription Changes
+
+When a subscription changes, multiple caches need updating:
+
+```ts
+// app/actions/subscription.ts
+'use server';
+
+import { cache } from '@/lib/cache';
+
+export async function upgradePlan(orgId: string, newPlanId: string) {
+  const subscription = await db.subscriptions.update({
+    where: { orgId },
+    data: { planId: newPlanId },
+  });
+
+  // Customer sees immediately (affects their feature access)
+  cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+  cache.customer.limits.byOrgId.updateTag({ orgId });
+
+  // Admin dashboard updates
+  cache.admin.subscriptions.byOrgId.updateTag({ orgId });
+
+  // Upcoming invoice changes
+  cache.customer.invoices.upcoming.updateTag({ orgId });
+
+  return subscription;
+}
+
+export async function cancelSubscription(orgId: string) {
+  const subscription = await db.subscriptions.update({
+    where: { orgId },
+    data: {
+      status: 'canceling',
+      cancelAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    },
+  });
+
+  // Immediate update for customer
+  cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+  cache.customer.limits.byOrgId.updateTag({ orgId });
+
+  // Admin sees immediately
+  cache.admin.subscriptions.byOrgId.updateTag({ orgId });
+
+  return subscription;
+}
+```
+
+### Pattern 5: Invoice Access
+
+Invoices are sensitive and should be carefully cached:
+
+```ts
+// app/billing/invoices/page.tsx
+import { cache } from '@/lib/cache';
+import { getCurrentOrg } from '@/lib/auth';
+
+async function getInvoices(orgId: string) {
+  'use cache';
+  cache.customer.invoices.byOrgId.cacheTag({ orgId });
+
+  return db.invoices.findMany({
+    where: { orgId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+}
+
+async function getUpcomingInvoice(orgId: string) {
+  'use cache';
+  cache.customer.invoices.upcoming.cacheTag({ orgId });
+
+  // Calculate upcoming invoice from Stripe or your billing system
+  return calculateUpcomingInvoice(orgId);
+}
+
+export default async function InvoicesPage() {
+  const org = await getCurrentOrg();
+  if (!org) redirect('/login');
+
+  const [invoices, upcoming] = await Promise.all([
+    getInvoices(org.id),
+    getUpcomingInvoice(org.id),
+  ]);
+
+  return (
+    <BillingLayout>
+      <UpcomingInvoice invoice={upcoming} />
+      <InvoiceHistory invoices={invoices} />
+    </BillingLayout>
+  );
+}
+```
+
+### Pattern 6: Usage Tracking
+
+Usage data may be shown with different freshness requirements:
+
+```ts
+// lib/usage.ts
+import { cache } from '@/lib/cache';
+
+// Current period usage - needs to be relatively fresh
+async function getCurrentUsage(orgId: string) {
+  'use cache';
+  cache.customer.usage.current.cacheTag({ orgId });
+
+  return db.usage.aggregate({
+    where: {
+      orgId,
+      period: getCurrentBillingPeriod(),
+    },
+    _sum: { count: true },
+  });
+}
+
+// Historical usage - can be cached longer
+async function getUsageHistory(orgId: string, period: string) {
+  'use cache';
+  cache.customer.usage.byOrgAndPeriod.cacheTag({ orgId, period });
+
+  return db.usage.findMany({
+    where: { orgId, period },
+    orderBy: { date: 'asc' },
+  });
+}
+
+// When usage is recorded
+export async function recordUsage(orgId: string, amount: number) {
+  await db.usage.create({
+    data: {
+      orgId,
+      count: amount,
+      period: getCurrentBillingPeriod(),
+      date: new Date(),
+    },
+  });
+
+  // Update current usage cache
+  cache.customer.usage.current.revalidateTag({ orgId });
+  cache.customer.usage.byOrgId.revalidateTag({ orgId });
+}
+```
+
+### Pattern 7: Stripe Webhook Handler
+
+Handle Stripe webhooks and update caches:
+
+```ts
+// app/api/webhooks/stripe/route.ts
+import { cache } from '@/lib/cache';
+
+export async function POST(request: Request) {
+  const event = await constructStripeEvent(request);
+
+  switch (event.type) {
+    case 'invoice.paid': {
+      const invoice = event.data.object;
+      const orgId = await getOrgIdFromStripeCustomer(invoice.customer);
+
+      // New invoice created
+      cache.customer.invoices.byOrgId.revalidateTag({ orgId });
+      cache.admin.invoices.byOrgId.revalidateTag({ orgId });
+      break;
+    }
+
+    case 'customer.subscription.updated': {
+      const subscription = event.data.object;
+      const orgId = await getOrgIdFromStripeCustomer(subscription.customer);
+
+      // Subscription changed
+      cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+      cache.customer.limits.byOrgId.updateTag({ orgId });
+      cache.customer.invoices.upcoming.revalidateTag({ orgId });
+      break;
+    }
+
+    case 'customer.subscription.deleted': {
+      const subscription = event.data.object;
+      const orgId = await getOrgIdFromStripeCustomer(subscription.customer);
+
+      // Subscription ended
+      cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+      cache.customer.limits.byOrgId.updateTag({ orgId });
+      break;
+    }
+  }
+
+  return new Response('OK');
+}
+```
+
+## Admin Dashboard
+
+```ts
+// app/admin/billing/page.tsx
+import { cache } from '@/lib/cache';
+
+async function getBillingOverview() {
+  'use cache';
+  cache.admin.subscriptions.list.cacheTag();
+
+  return {
+    activeSubscriptions: await db.subscriptions.count({ where: { status: 'active' } }),
+    mrr: await calculateMRR(),
+    churnRate: await calculateChurnRate(),
+  };
+}
+
+async function getRecentInvoices() {
+  'use cache';
+  cache.admin.invoices.list.cacheTag();
+
+  return db.invoices.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    include: { organization: true },
+  });
+}
+```
+
+## Key Takeaways
+
+1. **Pricing should update instantly**: Public pricing pages need immediate updates when prices change
+2. **Subscription status is critical**: It affects feature access, use `updateTag()` for customers
+3. **Invoice data is sensitive**: Only cache within customer scope, never cross-scope
+4. **Webhook handlers update caches**: Stripe events should trigger cache invalidation
+5. **Usage data freshness varies**: Current usage needs to be fresh, historical can be cached longer
