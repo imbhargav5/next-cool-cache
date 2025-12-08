@@ -1,17 +1,17 @@
 /** @type {import('jest').Config} */
 const config = {
-  preset: 'ts-jest/presets/default-esm',
-  testEnvironment: 'node',
-  extensionsToTreatAsEsm: ['.ts'],
+  preset: "ts-jest/presets/default-esm",
+  testEnvironment: "node",
+  extensionsToTreatAsEsm: [".ts"],
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
+    "^.+\\.tsx?$": [
+      "ts-jest",
       {
         useESM: true,
         tsconfig: {
-          module: 'ESNext',
-          moduleResolution: 'bundler',
-          target: 'ES2022',
+          module: "ESNext",
+          moduleResolution: "bundler",
+          target: "ES2022",
           strict: true,
           esModuleInterop: true,
           skipLibCheck: true,
@@ -21,10 +21,10 @@ const config = {
     ],
   },
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
+    "^(\\.{1,2}/.*)\\.js$": "$1",
   },
-  testMatch: ['<rootDir>/__tests__/**/*.test.ts'],
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
+  testMatch: ["<rootDir>/__tests__/**/*.test.ts"],
+  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   coverageThreshold: {
     global: {
       branches: 80,

@@ -1,0 +1,104 @@
+{
+  "extends": ["ultracite/core", "ultracite/react", "ultracite/next"],
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "linter": {
+    "rules": {
+      "complexity": {
+        "useDateNow": "off",
+        "noUselessFragments": "off",
+        "useOptionalChain": "off",
+        "noForEach": "off",
+        "noUselessSwitchCase": "off",
+        "noExcessiveCognitiveComplexity": "off",
+        "noUselessCatch": "off",
+        "useLiteralKeys": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "off",
+        "noUnusedFunctionParameters": "off",
+        "useExhaustiveDependencies": "off",
+        "useImageSize": "off",
+        "noUnknownProperty": "off",
+        "noUnknownFunction": "off",
+        "useParseIntRadix": "off",
+        "noInvalidPositionAtImportRule": "off",
+        "noNestedComponentDefinitions": "off",
+        "useSingleJsDocAsterisk": "off"
+      },
+      "performance": {
+        "useTopLevelRegex": "off",
+        "noNamespaceImport": "off",
+        "noImgElement": "off",
+        "noBarrelFile": "off",
+        "noDynamicNamespaceImportAccess": "off"
+      },
+      "nursery": {
+        "noShadow": "off",
+        "noIncrementDecrement": "off",
+        "noReactForwardRef": "off"
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off",
+        "noNoninteractiveElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "noSvgWithoutTitle": "off",
+        "useButtonType": "off",
+        "noRedundantAlt": "off",
+        "useHtmlLang": "off",
+        "useSemanticElements": "off",
+        "noRedundantRoles": "off",
+        "useValidAnchor": "off",
+        "useKeyWithMouseEvents": "off",
+        "useFocusableInteractive": "off",
+        "useAriaPropsForRole": "off"
+      },
+      "style": {
+        "noMagicNumbers": "off",
+        "useConsistentTypeDefinitions": "off",
+        "useDefaultSwitchClause": "off",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": true,
+            "filenameCases": ["kebab-case", "export"]
+          }
+        },
+        "useNodejsImportProtocol": "off",
+        "useTemplate": "off",
+        "noExportedImports": "off",
+        "noNestedTernary": "off",
+        "useBlockStatements": "off",
+        "useConsistentArrayType": "off",
+        "useAtIndex": "off",
+        "useUnifiedTypeSignatures": "off",
+        "useConsistentBuiltinInstantiation": "off",
+        "useForOf": "off",
+        "useFragmentSyntax": "off",
+        "useShorthandAssign": "off",
+        "noNamespace": "off",
+        "noParameterProperties": "off",
+        "useConsistentMemberAccessibility": "off",
+        "useReadonlyClassProperties": "off",
+        "noEnum": "off"
+      },
+      "suspicious": {
+        "noConsole": "off",
+        "noEmptyBlockStatements": "off",
+        "useAwait": "off",
+        "noExplicitAny": "off",
+        "useIterableCallbackReturn": "off",
+        "noShadowRestrictedNames": "off",
+        "noArrayIndexKey": "off",
+        "noUnassignedVariables": "off",
+        "noDoubleEquals": "off",
+        "noAssignInExpressions": "off",
+        "useStaticResponseMethods": "off",
+        "noAlert": "off",
+        "noDocumentCookie": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "off"
+      }
+    }
+  }
+}

@@ -1,11 +1,11 @@
 /**
- * next-typed-cache
+ * next-cool-cache
  *
  * Type-safe cache tag management for Next.js 16.
  *
  * @example
  * ```ts
- * import { createCache } from 'next-typed-cache';
+ * import { createCache } from 'next-cool-cache';
  * import { cacheTag, revalidateTag, updateTag } from 'next/cache';
  *
  * const schema = {
@@ -36,28 +36,26 @@
  */
 
 // Main factory function
-export { createCache } from './create-cache.js';
-
-// Type exports
-export type {
-  ParamsArray,
-  ParamsToObject,
-  IsLeaf,
-  ExtractParams,
-  LeafNode,
-  BranchNode,
-  BuildTree,
-  ScopedCache,
-  CacheOptions,
-} from './types.js';
+export { createCache } from "./create-cache.js";
+export { getChildKeys, getParams, isLeafNode } from "./schema-utils.js";
 
 // Utility exports (for advanced use cases)
 export {
-  buildTag,
+  buildAllTags,
   buildAncestorTags,
   buildScopedTag,
-  buildAllTags,
+  buildTag,
   buildUnscopedTags,
-} from './tag-builder.js';
-
-export { isLeafNode, getParams, getChildKeys } from './schema-utils.js';
+} from "./tag-builder.js";
+// Type exports
+export type {
+  BranchNode,
+  BuildTree,
+  CacheOptions,
+  ExtractParams,
+  IsLeaf,
+  LeafNode,
+  ParamsArray,
+  ParamsToObject,
+  ScopedCache,
+} from "./types.js";

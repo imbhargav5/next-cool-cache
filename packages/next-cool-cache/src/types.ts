@@ -1,5 +1,5 @@
 /**
- * Type definitions for next-typed-cache
+ * Type definitions for next-cool-cache
  *
  * Schema format:
  * - Empty object {} = leaf node without params
@@ -31,7 +31,7 @@ export type IsLeaf<T> = T extends { _params: ParamsArray }
   ? true
   : T extends Record<string, never>
     ? true
-    : keyof T extends '_params'
+    : keyof T extends "_params"
       ? true
       : false;
 
@@ -39,7 +39,9 @@ export type IsLeaf<T> = T extends { _params: ParamsArray }
  * Extract params array from a schema node.
  * Returns empty array if no _params defined.
  */
-export type ExtractParams<T> = T extends { _params: infer P extends ParamsArray }
+export type ExtractParams<T> = T extends {
+  _params: infer P extends ParamsArray;
+}
   ? P
   : readonly [];
 
@@ -51,29 +53,35 @@ export type ExtractParams<T> = T extends { _params: infer P extends ParamsArray 
  * Leaf node interface - methods mirror Next.js API names exactly.
  * Methods only require params if the schema node has _params.
  */
-export interface LeafNode<P extends ParamsArray = readonly []> {
+export type LeafNode<P extends ParamsArray = readonly []> = {
   /** Register cache tags (call inside 'use cache' functions) */
-  cacheTag: P['length'] extends 0 ? () => void : (params: ParamsToObject<P>) => void;
+  cacheTag: P["length"] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
   /** Stale-while-revalidate invalidation */
-  revalidateTag: P['length'] extends 0 ? () => void : (params: ParamsToObject<P>) => void;
+  revalidateTag: P["length"] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
   /** Expire immediately and fetch fresh */
-  updateTag: P['length'] extends 0 ? () => void : (params: ParamsToObject<P>) => void;
+  updateTag: P["length"] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
   /** Raw path for debugging */
   _path: string;
-}
+};
 
 /**
  * Branch node interface - can invalidate/update entire subtree.
  * No params required since it operates on the whole subtree.
  */
-export interface BranchNode {
+export type BranchNode = {
   /** Invalidate entire subtree */
   revalidateTag: () => void;
   /** Update entire subtree */
   updateTag: () => void;
   /** Raw path for debugging */
   _path: string;
-}
+};
 
 // ============================================
 // RECURSIVE TYPE BUILDER
@@ -84,11 +92,11 @@ export interface BranchNode {
  * - Leaf nodes become LeafNode<Params>
  * - Branch nodes become BuildTree<Children> & BranchNode
  */
-export type BuildTree<T, Prefix extends string = ''> = {
-  [K in keyof T as K extends '_params' ? never : K]: IsLeaf<T[K]> extends true
+export type BuildTree<T, Prefix extends string = ""> = {
+  [K in keyof T as K extends "_params" ? never : K]: IsLeaf<T[K]> extends true
     ? LeafNode<ExtractParams<T[K]>>
     : BuildTree<T[K], `${Prefix}${K & string}/`> & BranchNode;
-} & (Prefix extends '' ? object : BranchNode);
+} & (Prefix extends "" ? object : BranchNode);
 
 // ============================================
 // SCOPED CACHE TYPE
@@ -112,11 +120,11 @@ export type ScopedCache<T, Scopes extends readonly string[]> = {
  * Options for createCache function.
  * Allows injecting Next.js cache functions for testing.
  */
-export interface CacheOptions {
+export type CacheOptions = {
   /** next/cache cacheTag function */
   cacheTag?: (...tags: string[]) => void;
   /** next/cache revalidateTag function */
   revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
   /** next/cache updateTag function */
   updateTag?: (tag: string) => void;
-}
+};

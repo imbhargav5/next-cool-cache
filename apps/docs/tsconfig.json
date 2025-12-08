@@ -8,7 +8,8 @@
     ],
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "strictNullChecks": true
   },
   "include": [
     "**/*.ts",
@@ -19,7 +20,5 @@
     ".next/types/**/*.ts",
     ".source/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

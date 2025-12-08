@@ -12,9 +12,6 @@
       "inputs": ["src/**/*.ts", "__tests__/**/*.ts", "jest.config.ts"],
       "outputs": ["coverage/**"]
     },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
     "check-types": {
       "dependsOn": ["^check-types"]
     },

@@ -1,0 +1,66 @@
+name: CI and Semantic Release
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches:
+      - main
+      - alpha
+      - next
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'imbhargav5/next-cool-cache' && contains('refs/heads/main,refs/heads/alpha,refs/heads/next',github.ref)}}
+    steps:
+      - name: "Check if user has write access"
+        uses: "lannonbr/repo-permission-check-action@2.0.0"
+        with:
+          permission: "write"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: CI Setup
+        uses: ./.github/actions/ci-setup
+
+      - name: Run build
+        run: pnpm run build
+
+      - name: Run lint
+        run: pnpm run lint
+
+      - name: Run type check
+        run: pnpm run check-types
+
+  release:
+    name: Publish To NPM
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'imbhargav5/next-cool-cache' &&
+      contains('refs/heads/main,refs/heads/alpha,refs/heads/next',github.ref) && github.event_name == 'push' }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: CI Setup
+        uses: ./.github/actions/ci-setup
+
+      - name: Run build script
+        run: pnpm run build
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm run release
+          version: pnpm run version-packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
