@@ -64,7 +64,7 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
-  packages/next-typed-cache:
+  packages/next-cool-cache:
     dependencies:
       next:
         specifier: '>=16.0.0'
@@ -1788,6 +1788,7 @@ packages:
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
+    hasBin: true
 
   semver@7.7.3:
     resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}

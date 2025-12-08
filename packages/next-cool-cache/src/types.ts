@@ -1,5 +1,5 @@
 /**
- * Type definitions for next-typed-cache
+ * Type definitions for next-cool-cache
  *
  * Schema format:
  * - Empty object {} = leaf node without params

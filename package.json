@@ -1,5 +1,5 @@
 {
-  "name": "next-typed-cache",
+  "name": "next-cool-cache",
   "private": true,
   "scripts": {
     "build": "turbo run build",
