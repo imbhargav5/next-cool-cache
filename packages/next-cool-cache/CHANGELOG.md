@@ -1,5 +1,11 @@
 # next-cool-cache
 
+## 0.1.0
+
+### Minor Changes
+
+- [`e2368c6`](https://github.com/imbhargav5/next-cool-cache/commit/e2368c610724afb7b6e1f729641f3ee96d764a06) Thanks [@imbhargav5](https://github.com/imbhargav5)! - remove options
+
 ## 0.0.3
 
 ### Patch Changes
