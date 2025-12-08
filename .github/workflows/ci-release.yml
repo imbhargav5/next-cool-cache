@@ -10,7 +10,7 @@ on:
       - next
 permissions:
   id-token: write
-  contents: read
+  contents: write
 jobs:
   test:
     name: Build and Test
