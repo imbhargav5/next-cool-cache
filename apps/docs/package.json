@@ -25,6 +25,7 @@
     "@types/react-dom": "19.2.2",
     "eslint": "^9.39.1",
     "tailwindcss": "^4.0.0",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "zod": "^4.1.13"
   }
 }

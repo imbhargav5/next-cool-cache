@@ -8,6 +8,7 @@ import { source } from '@/lib/source';
 import { notFound } from 'next/navigation';
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { Callout } from 'fumadocs-ui/components/callout';
+import type { DocData } from 'fumadocs-mdx/runtime/types';
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
@@ -27,10 +28,12 @@ export default async function Page({ params }: PageProps) {
     notFound();
   }
 
-  const MDX = page.data.body;
+  // Type assertion: fumadocs-mdx adds body and toc to page data
+  const data = page.data as typeof page.data & DocData;
+  const MDX = data.body;
 
   return (
-    <DocsPage toc={page.data.toc}>
+    <DocsPage toc={data.toc}>
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
