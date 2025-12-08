@@ -2,15 +2,15 @@
  * Factory function to create a typed cache object from a schema.
  */
 
+import { getChildKeys, getParams, isLeafNode } from "./schema-utils.js";
+import { buildAllTags, buildTag, buildUnscopedTags } from "./tag-builder.js";
 import type {
-  ParamsArray,
-  LeafNode,
   BranchNode,
-  ScopedCache,
   CacheOptions,
-} from './types.js';
-import { isLeafNode, getParams, getChildKeys } from './schema-utils.js';
-import { buildTag, buildAllTags, buildUnscopedTags } from './tag-builder.js';
+  LeafNode,
+  ParamsArray,
+  ScopedCache,
+} from "./types.js";
 
 /**
  * Build a leaf node with cacheTag, revalidateTag, and updateTag methods.
@@ -18,26 +18,26 @@ import { buildTag, buildAllTags, buildUnscopedTags } from './tag-builder.js';
 function buildLeafNodeImpl(
   resourcePath: string[],
   scopePath: string[],
-  params: string[],
+  _params: string[],
   options: Required<CacheOptions>
 ): LeafNode<ParamsArray> {
-  const scopedKey = [...scopePath, ...resourcePath].join('/');
+  const scopedKey = [...scopePath, ...resourcePath].join("/");
 
   return {
     cacheTag: ((p?: Record<string, string>) => {
       const tags = buildAllTags(resourcePath, scopePath, p ?? {});
       options.cacheTag(...tags);
-    }) as LeafNode<ParamsArray>['cacheTag'],
+    }) as LeafNode<ParamsArray>["cacheTag"],
 
     revalidateTag: ((p?: Record<string, string>) => {
       const tag = buildTag([...scopePath, ...resourcePath], p ?? {});
-      options.revalidateTag(tag, 'max');
-    }) as LeafNode<ParamsArray>['revalidateTag'],
+      options.revalidateTag(tag, "max");
+    }) as LeafNode<ParamsArray>["revalidateTag"],
 
     updateTag: ((p?: Record<string, string>) => {
       const tag = buildTag([...scopePath, ...resourcePath], p ?? {});
       options.updateTag(tag);
-    }) as LeafNode<ParamsArray>['updateTag'],
+    }) as LeafNode<ParamsArray>["updateTag"],
 
     _path: scopedKey,
   };
@@ -48,26 +48,26 @@ function buildLeafNodeImpl(
  */
 function buildUnscopedLeafNodeImpl(
   resourcePath: string[],
-  params: string[],
+  _params: string[],
   options: Required<CacheOptions>
 ): LeafNode<ParamsArray> {
-  const resourceKey = resourcePath.join('/');
+  const resourceKey = resourcePath.join("/");
 
   return {
     cacheTag: ((p?: Record<string, string>) => {
       const tags = buildUnscopedTags(resourcePath, p ?? {});
       options.cacheTag(...tags);
-    }) as LeafNode<ParamsArray>['cacheTag'],
+    }) as LeafNode<ParamsArray>["cacheTag"],
 
     revalidateTag: ((p?: Record<string, string>) => {
       const tag = buildTag(resourcePath, p ?? {});
-      options.revalidateTag(tag, 'max');
-    }) as LeafNode<ParamsArray>['revalidateTag'],
+      options.revalidateTag(tag, "max");
+    }) as LeafNode<ParamsArray>["revalidateTag"],
 
     updateTag: ((p?: Record<string, string>) => {
       const tag = buildTag(resourcePath, p ?? {});
       options.updateTag(tag);
-    }) as LeafNode<ParamsArray>['updateTag'],
+    }) as LeafNode<ParamsArray>["updateTag"],
 
     _path: resourceKey,
   };
@@ -81,15 +81,15 @@ function buildBranchNodeImpl(
   scopePath: string[],
   options: Required<CacheOptions>
 ): BranchNode {
-  const scopedKey = [...scopePath, ...resourcePath].join('/');
+  const scopedKey = [...scopePath, ...resourcePath].join("/");
 
   return {
     revalidateTag: () => {
-      options.revalidateTag(scopedKey || scopePath[0] || 'root', 'max');
+      options.revalidateTag(scopedKey || scopePath[0] || "root", "max");
     },
 
     updateTag: () => {
-      options.updateTag(scopedKey || scopePath[0] || 'root');
+      options.updateTag(scopedKey || scopePath[0] || "root");
     },
 
     _path: scopedKey,
@@ -140,13 +140,13 @@ function buildUnscopedBranch(
   resourcePath: string[],
   options: Required<CacheOptions>
 ): Record<string, unknown> {
-  const resourceKey = resourcePath.join('/');
+  const resourceKey = resourcePath.join("/");
   const result: Record<string, unknown> = {
     revalidateTag: () => {
-      options.revalidateTag(resourceKey || 'root', 'max');
+      options.revalidateTag(resourceKey || "root", "max");
     },
     updateTag: () => {
-      options.updateTag(resourceKey || 'root');
+      options.updateTag(resourceKey || "root");
     },
     _path: resourceKey,
   };

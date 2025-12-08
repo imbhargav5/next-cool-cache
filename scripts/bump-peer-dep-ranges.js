@@ -1,8 +1,8 @@
 // Inspired from - https://github.com/statelyai/xstate/blob/main/scripts/bump-peer-dep-ranges.js
-"use strict";
-const { spawnSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 const { getPackagesSync } = require("@manypkg/get-packages");
 
 const gitStatusResult = spawnSync("git", ["status", "--porcelain"]);
@@ -38,7 +38,7 @@ const pkgChanges = new Map(
         packageJson.name,
         {
           path: fsPath,
-          packageJson: packageJson,
+          packageJson,
           versionChanged:
             packageJson.version !==
             JSON.parse(previousPackageJsonResult.stdout.toString().trim())
@@ -51,21 +51,20 @@ const pkgChanges = new Map(
 // Update this array with package names that have peer dependencies to track
 for (const peerPkg of ["next-typed-cache"]) {
   const peerPkgChange = pkgChanges.get(peerPkg);
-  if (!peerPkgChange || !peerPkgChange.versionChanged) {
+  if (!peerPkgChange?.versionChanged) {
     continue;
   }
   for (const dependentPkg of allPackages) {
     const peerDeps = dependentPkg.packageJson.peerDependencies;
-    if (!peerDeps || !peerDeps[peerPkg]) {
+    if (!peerDeps?.[peerPkg]) {
       continue;
     }
     const pkgJsonCopy = { ...dependentPkg.packageJson };
-    pkgJsonCopy.peerDependencies[
-      peerPkg
-    ] = `^${peerPkgChange.packageJson.version}`;
+    pkgJsonCopy.peerDependencies[peerPkg] =
+      `^${peerPkgChange.packageJson.version}`;
     fs.writeFileSync(
       path.join(dependentPkg.dir, "package.json"),
-      JSON.stringify(pkgJsonCopy, null, 2) + "\n"
+      `${JSON.stringify(pkgJsonCopy, null, 2)}\n`
     );
   }
 }

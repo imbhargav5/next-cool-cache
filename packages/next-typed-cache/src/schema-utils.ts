@@ -9,7 +9,7 @@
  * - An object with only _params key
  */
 export function isLeafNode(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     return false;
   }
 
@@ -21,7 +21,7 @@ export function isLeafNode(value: unknown): boolean {
   }
 
   // Object with only _params = leaf with params
-  if (keys.length === 1 && keys[0] === '_params') {
+  if (keys.length === 1 && keys[0] === "_params") {
     return true;
   }
 
@@ -34,9 +34,9 @@ export function isLeafNode(value: unknown): boolean {
  */
 export function getParams(node: unknown): string[] {
   if (
-    typeof node === 'object' &&
+    typeof node === "object" &&
     node !== null &&
-    '_params' in node &&
+    "_params" in node &&
     Array.isArray((node as { _params: string[] })._params)
   ) {
     return (node as { _params: string[] })._params;
@@ -49,9 +49,9 @@ export function getParams(node: unknown): string[] {
  * Get child keys from a schema node, excluding _params.
  */
 export function getChildKeys(node: unknown): string[] {
-  if (typeof node !== 'object' || node === null) {
+  if (typeof node !== "object" || node === null) {
     return [];
   }
 
-  return Object.keys(node).filter((key) => key !== '_params');
+  return Object.keys(node).filter((key) => key !== "_params");
 }
