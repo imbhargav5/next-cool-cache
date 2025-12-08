@@ -1,6 +1,6 @@
 {
   "name": "next-cool-cache",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Type-safe cache tag management for Next.js 16",
   "type": "module",
   "main": "./dist/index.js",
