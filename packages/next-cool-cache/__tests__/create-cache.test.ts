@@ -323,7 +323,9 @@ describe("createCache", () => {
 
       it("handles product search queries", () => {
         const cache = createTestCache();
-        cache.customer.products.search.cacheTag({ query: "wireless headphones" });
+        cache.customer.products.search.cacheTag({
+          query: "wireless headphones",
+        });
 
         expect(mockCacheTag).toHaveBeenCalledWith(
           "customer/products/search:wireless headphones",
@@ -452,7 +454,9 @@ describe("createCache", () => {
 
       it("handles order tracking", () => {
         const cache = createTestCache();
-        cache.customer.orders.tracking.byOrderId.cacheTag({ orderId: "order-002" });
+        cache.customer.orders.tracking.byOrderId.cacheTag({
+          orderId: "order-002",
+        });
 
         expect(mockCacheTag).toHaveBeenCalledWith(
           "customer/orders/tracking/byOrderId:order-002",
@@ -556,7 +560,10 @@ describe("createCache", () => {
         const cache = createTestCache();
         cache.admin.categories.revalidateTag();
 
-        expect(mockRevalidateTag).toHaveBeenCalledWith("admin/categories", "max");
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/categories",
+          "max"
+        );
       });
     });
 
@@ -905,7 +912,14 @@ describe("createCache", () => {
 
         expect(mockCacheTag).toHaveBeenCalledTimes(6);
 
-        const scopes = ["superadmin", "orgAdmin", "manager", "member", "viewer", "api"];
+        const scopes = [
+          "superadmin",
+          "orgAdmin",
+          "manager",
+          "member",
+          "viewer",
+          "api",
+        ];
         scopes.forEach((scope, index) => {
           expect(mockCacheTag).toHaveBeenNthCalledWith(
             index + 1,
@@ -1025,7 +1039,10 @@ describe("createCache", () => {
       expect(mockRevalidateTag).toHaveBeenCalledWith("admin/level1", "max");
 
       cache.admin.level1.level2.revalidateTag();
-      expect(mockRevalidateTag).toHaveBeenCalledWith("admin/level1/level2", "max");
+      expect(mockRevalidateTag).toHaveBeenCalledWith(
+        "admin/level1/level2",
+        "max"
+      );
 
       cache.admin.level1.level2.level3.revalidateTag();
       expect(mockRevalidateTag).toHaveBeenCalledWith(
@@ -1151,7 +1168,9 @@ describe("createCache", () => {
 
       it("handles email with subdomain", () => {
         const cache = createTestCache();
-        cache.admin.users.byEmail.cacheTag({ email: "admin@mail.company.co.uk" });
+        cache.admin.users.byEmail.cacheTag({
+          email: "admin@mail.company.co.uk",
+        });
 
         expect(mockCacheTag).toHaveBeenCalledWith(
           "admin/users/byEmail:admin@mail.company.co.uk",
@@ -1275,7 +1294,9 @@ describe("createCache", () => {
 
       it("handles query with special characters", () => {
         const cache = createTestCache();
-        cache.admin.search.byQuery.cacheTag({ query: "price<100 AND status:active" });
+        cache.admin.search.byQuery.cacheTag({
+          query: "price<100 AND status:active",
+        });
 
         expect(mockCacheTag).toHaveBeenCalledWith(
           "admin/search/byQuery:price<100 AND status:active",
@@ -1507,7 +1528,10 @@ describe("createCache", () => {
         const cache = createTestCache();
         cache.admin.dashboard.revalidateTag();
 
-        expect(mockRevalidateTag).toHaveBeenCalledWith("admin/dashboard", "max");
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/dashboard",
+          "max"
+        );
       });
 
       it("invalidating analytics branch affects all analytics children", () => {

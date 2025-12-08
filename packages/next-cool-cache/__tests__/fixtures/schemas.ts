@@ -114,7 +114,12 @@ export const ecommerceSchema = {
   },
 } as const;
 
-export const ecommerceScopes = ["admin", "seller", "customer", "guest"] as const;
+export const ecommerceScopes = [
+  "admin",
+  "seller",
+  "customer",
+  "guest",
+] as const;
 
 /**
  * SaaS multi-tenant schema - deep nesting (6+ levels) with many scopes.

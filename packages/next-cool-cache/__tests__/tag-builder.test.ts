@@ -214,9 +214,9 @@ describe("tag-builder", () => {
     });
 
     it("handles parameter with newlines", () => {
-      expect(
-        buildTag(["content", "byText"], { text: "line1\nline2" })
-      ).toBe("content/byText:line1\nline2");
+      expect(buildTag(["content", "byText"], { text: "line1\nline2" })).toBe(
+        "content/byText:line1\nline2"
+      );
     });
 
     it("handles parameter with tabs", () => {
@@ -227,14 +227,16 @@ describe("tag-builder", () => {
 
     it("handles URL as parameter value", () => {
       expect(
-        buildTag(["links", "byUrl"], { url: "https://example.com/path?q=1&b=2" })
+        buildTag(["links", "byUrl"], {
+          url: "https://example.com/path?q=1&b=2",
+        })
       ).toBe("links/byUrl:https://example.com/path?q=1&b=2");
     });
 
     it("handles JSON-like string as parameter", () => {
-      expect(
-        buildTag(["data", "byJson"], { json: '{"key":"value"}' })
-      ).toBe('data/byJson:{"key":"value"}');
+      expect(buildTag(["data", "byJson"], { json: '{"key":"value"}' })).toBe(
+        'data/byJson:{"key":"value"}'
+      );
     });
 
     it("handles multiple params with special characters", () => {
@@ -250,9 +252,13 @@ describe("tag-builder", () => {
 
   describe("stress tests for buildAncestorTags", () => {
     it("handles 6 level deep path", () => {
-      expect(
-        buildAncestorTags(["l1", "l2", "l3", "l4", "l5", "l6"])
-      ).toEqual(["l1", "l1/l2", "l1/l2/l3", "l1/l2/l3/l4", "l1/l2/l3/l4/l5"]);
+      expect(buildAncestorTags(["l1", "l2", "l3", "l4", "l5", "l6"])).toEqual([
+        "l1",
+        "l1/l2",
+        "l1/l2/l3",
+        "l1/l2/l3/l4",
+        "l1/l2/l3/l4/l5",
+      ]);
     });
 
     it("handles 8 level deep path", () => {
@@ -410,9 +416,7 @@ describe("tag-builder", () => {
 
     it("handles very long scope name", () => {
       const longScope = "very-long-scope-name-for-testing-purposes";
-      expect(buildScopedTag(longScope, "users")).toBe(
-        `${longScope}/users`
-      );
+      expect(buildScopedTag(longScope, "users")).toBe(`${longScope}/users`);
     });
   });
 });
