@@ -1,0 +1,298 @@
+---
+title: Hierarchical Tagging
+description: Understand how hierarchical cache tags enable powerful invalidation patterns
+---
+
+# Hierarchical Tagging
+
+One of the most powerful features of `next-typed-cache` is automatic hierarchical tag registration. This enables you to invalidate a parent and have all children automatically refresh.
+
+## The Problem with Flat Tags
+
+Traditional cache tags are flat strings:
+
+```ts
+// Traditional approach
+cacheTag('users-list');
+cacheTag('users-123');
+cacheTag('posts-by-user-123');
+cacheTag('comments-by-user-123');
+```
+
+To invalidate all user data, you need to know and invalidate each tag individually:
+
+```ts
+// Have to remember all related tags
+revalidateTag('users-list');
+revalidateTag('users-123');
+revalidateTag('posts-by-user-123');
+revalidateTag('comments-by-user-123');
+// Did we forget any?
+```
+
+This is error-prone and becomes unmanageable as your application grows.
+
+## How Hierarchical Tagging Works
+
+With `next-typed-cache`, calling `cacheTag()` automatically registers the tag AND all its ancestors:
+
+```ts
+cache.admin.users.byId.cacheTag({ id: '123' });
+```
+
+This single call registers **all** of these tags:
+
+```
+admin/users/byId:123  (the leaf tag)
+admin/users           (ancestor)
+admin                 (scope root)
+users/byId:123        (unscoped leaf)
+users                 (unscoped ancestor)
+```
+
+Now you can invalidate at any level:
+
+```ts
+// Just this user
+cache.admin.users.byId.revalidateTag({ id: '123' });
+// Invalidates: admin/users/byId:123
+
+// All users in admin scope
+cache.admin.users.revalidateTag();
+// Invalidates: admin/users
+// This catches all data tagged with admin/users/* including admin/users/byId:123
+
+// All admin data
+cache.admin.revalidateTag();
+// Invalidates: admin
+// Catches everything under admin/*
+```
+
+## Visual Representation
+
+Consider this schema:
+
+```ts
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+    },
+    categories: {
+      list: {},
+    },
+  },
+} as const;
+```
+
+When you cache a post:
+
+```ts
+cache.admin.blog.posts.byId.cacheTag({ id: '42' });
+```
+
+The tag hierarchy looks like:
+
+```
+admin (scope root)
+└── admin/blog
+    └── admin/blog/posts
+        └── admin/blog/posts/byId:42
+
+blog (unscoped)
+└── blog/posts
+    └── blog/posts/byId:42
+```
+
+## Invalidation Granularity
+
+### Fine-Grained: Single Resource
+
+Invalidate exactly one cached resource:
+
+```ts
+// Just post #42
+cache.admin.blog.posts.byId.revalidateTag({ id: '42' });
+```
+
+Use when: A specific item was updated.
+
+### Medium: Category/Section
+
+Invalidate all resources of a type:
+
+```ts
+// All posts (list and individual)
+cache.admin.blog.posts.revalidateTag();
+```
+
+Use when: Bulk operations, reordering, or when changes affect multiple items.
+
+### Broad: Feature Area
+
+Invalidate an entire feature:
+
+```ts
+// All blog data (posts and categories)
+cache.admin.blog.revalidateTag();
+```
+
+Use when: Major changes, migrations, or deployments.
+
+### Broadest: Entire Scope
+
+Invalidate everything in a scope:
+
+```ts
+// All admin-scoped data
+cache.admin.revalidateTag();
+```
+
+Use when: User logs out, permissions change, or during maintenance.
+
+## Practical Examples
+
+### Example 1: Editing a Post
+
+When a post is edited, only that post needs invalidation:
+
+```ts
+async function updatePost(postId: string, data: PostData) {
+  await db.posts.update({ where: { id: postId }, data });
+
+  // Fine-grained: just this post
+  cache.admin.blog.posts.byId.updateTag({ id: postId });
+  cache.public.blog.posts.byId.revalidateTag({ id: postId });
+}
+```
+
+### Example 2: Bulk Publishing
+
+When publishing multiple posts at once, invalidate the whole category:
+
+```ts
+async function publishAllDrafts() {
+  await db.posts.updateMany({
+    where: { status: 'draft' },
+    data: { status: 'published' },
+  });
+
+  // Medium-grained: all posts
+  cache.admin.blog.posts.revalidateTag();
+  cache.public.blog.posts.revalidateTag();
+}
+```
+
+### Example 3: Reorganizing Categories
+
+When categories are restructured, posts are affected too:
+
+```ts
+async function reorganizeCategories(newStructure: CategoryStructure) {
+  await db.categories.updateMany(/* ... */);
+  await db.posts.updateMany(/* ... */);
+
+  // Broad: all blog data
+  cache.admin.blog.revalidateTag();
+  cache.public.blog.revalidateTag();
+}
+```
+
+### Example 4: User Deletion
+
+When a user is deleted, invalidate across all scopes:
+
+```ts
+async function deleteUser(userId: string) {
+  await db.users.delete({ where: { id: userId } });
+
+  // Cross-scope: all user data everywhere
+  cache.users.byId.revalidateTag({ id: userId });
+}
+```
+
+## How Tags Are Built
+
+Under the hood, `next-typed-cache` uses these utility functions:
+
+### buildTag()
+
+Creates a single tag string:
+
+```ts
+buildTag(['users', 'byId'], { id: '123' })
+// Returns: 'users/byId:123'
+
+buildTag(['users', 'list'], {})
+// Returns: 'users/list'
+```
+
+### buildAncestorTags()
+
+Generates all ancestor paths:
+
+```ts
+buildAncestorTags(['blog', 'posts', 'byId'])
+// Returns: ['blog', 'blog/posts']
+```
+
+### buildAllTags()
+
+Combines everything for hierarchical registration:
+
+```ts
+buildAllTags(['posts', 'byId'], ['admin'], { id: '123' })
+// Returns:
+// [
+//   'admin/posts/byId:123',  (scoped leaf)
+//   'admin/posts',           (scoped ancestor)
+//   'admin',                 (scope root)
+//   'posts/byId:123',        (unscoped leaf)
+//   'posts'                  (unscoped ancestor)
+// ]
+```
+
+## Performance Considerations
+
+### Tag Registration Overhead
+
+Registering multiple tags has minimal overhead:
+- Tags are simple strings
+- Next.js handles deduplication
+- No network calls during registration
+
+### Invalidation Cascade
+
+When you invalidate a parent tag, Next.js invalidates all cached data that includes that tag. This is efficient because:
+- The cache system maintains tag indexes
+- No need to enumerate children
+- Single invalidation operation
+
+### Best Practices
+
+1. **Cache at the leaf level** - Register tags on the most specific resource
+2. **Invalidate at the appropriate level** - Don't over-invalidate
+3. **Use cross-scope sparingly** - Only when truly needed
+
+```ts
+// Good: invalidate just what changed
+cache.admin.posts.byId.revalidateTag({ id: '123' });
+
+// Avoid: over-invalidation unless necessary
+cache.admin.revalidateTag();  // Invalidates everything!
+```
+
+## Debugging
+
+Each node has a `_path` property for debugging:
+
+```ts
+console.log(cache.admin.blog.posts.byId._path);
+// Output: 'admin/blog/posts/byId'
+
+console.log(cache.blog.posts._path);
+// Output: 'blog/posts'
+```
+
+This helps verify your schema structure and understand what tags are being used.

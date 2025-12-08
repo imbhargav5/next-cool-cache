@@ -1,0 +1,154 @@
+---
+title: Introduction
+description: Type-safe cache tag management for Next.js 16
+---
+
+# Stop Wrestling with String-Based Cache Tags
+
+`next-typed-cache` brings compile-time safety to Next.js cache management. No more typos, no more silent failures, no more debugging mysterious stale data issues.
+
+## The Problem
+
+In Next.js 16, cache tags are plain strings. A simple typo can break your entire caching strategy:
+
+```ts
+// Somewhere in your codebase...
+revalidateTag("user/byId:123");  // typo: "user" instead of "users"
+
+// The actual tag is "users/byId:123"
+// Result: Silent failure. Cache never invalidates. Users see stale data.
+```
+
+This bug is nearly impossible to catch:
+- No compile-time error
+- No runtime error
+- No warning in logs
+- Just stale data and confused users
+
+## The Solution
+
+With `next-typed-cache`, your IDE catches these errors instantly:
+
+```ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+
+// TypeScript error: Property 'user' does not exist
+cache.admin.user.byId.revalidateTag({ id: '123' });
+//          ^^^^
+// Did you mean 'users'?
+```
+
+## Key Features
+
+### Type-Safe Tags
+Full autocomplete and compile-time verification. Rename a resource and TypeScript guides you to every location that needs updating.
+
+### Hierarchical Invalidation
+Invalidate a parent to cascade to all children. Perfect for bulk operations.
+
+```ts
+// Invalidate all user data in admin scope
+cache.admin.users.revalidateTag();
+
+// Invalidate just one user
+cache.admin.users.byId.revalidateTag({ id: '123' });
+```
+
+### Multi-Scope Support
+Different cache strategies for different audiences:
+
+```ts
+// Admins see changes immediately
+cache.admin.posts.byId.updateTag({ id: '456' });
+
+// Public users get stale-while-revalidate (no loading screens)
+cache.public.posts.byId.revalidateTag({ id: '456' });
+```
+
+### Cross-Scope Operations
+Invalidate across all scopes when needed:
+
+```ts
+// User changed their profile - invalidate everywhere
+cache.users.byId.revalidateTag({ id: '123' });
+```
+
+### Zero Runtime Overhead
+Pure TypeScript types with minimal runtime. Tags are simple strings under the hood.
+
+## Quick Example
+
+```ts
+// cache.ts
+import { createCache } from 'next-typed-cache';
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+    },
+    categories: {
+      list: {},
+    },
+  },
+  users: {
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public'] as const;
+
+export const cache = createCache(schema, scopes, {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+});
+```
+
+```ts
+// In a cached function
+'use cache';
+cache.public.blog.posts.byId.cacheTag({ id: postId });
+const post = await fetchPost(postId);
+```
+
+```ts
+// In a server action
+'use server';
+await updatePost(postId, data);
+cache.admin.blog.posts.byId.updateTag({ id: postId });
+cache.public.blog.posts.byId.revalidateTag({ id: postId });
+```
+
+## Next Steps
+
+<Cards>
+  <Card title="Getting Started" href="/docs/getting-started">
+    Install and set up next-typed-cache in 5 minutes
+  </Card>
+  <Card title="Scenarios" href="/docs/scenarios/blog-cms">
+    Learn through real-world examples
+  </Card>
+  <Card title="API Reference" href="/docs/api-reference/create-cache">
+    Complete API documentation
+  </Card>
+</Cards>

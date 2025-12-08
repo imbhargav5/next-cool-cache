@@ -1,0 +1,4 @@
+{
+  "title": "API Reference",
+  "pages": ["create-cache", "cache-methods", "tag-utilities", "types"]
+}

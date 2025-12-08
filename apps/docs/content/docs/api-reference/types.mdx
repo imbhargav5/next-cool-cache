@@ -1,0 +1,361 @@
+---
+title: Types
+description: TypeScript type definitions exported by next-typed-cache
+---
+
+# TypeScript Types
+
+`next-typed-cache` exports several TypeScript types for advanced use cases and custom extensions.
+
+## Import
+
+```ts
+import type {
+  ParamsArray,
+  ParamsToObject,
+  IsLeaf,
+  ExtractParams,
+  LeafNode,
+  BranchNode,
+  BuildTree,
+  ScopedCache,
+  CacheOptions,
+} from 'next-typed-cache';
+```
+
+## Parameter Types
+
+### ParamsArray
+
+Represents an array of parameter names.
+
+```ts
+type ParamsArray = readonly string[];
+```
+
+**Usage:**
+```ts
+// In schema definitions
+const schema = {
+  byId: { _params: ['id'] as const satisfies ParamsArray },
+  byOwnerAndSlug: { _params: ['ownerId', 'slug'] as const satisfies ParamsArray },
+} as const;
+```
+
+### ParamsToObject
+
+Converts a params array type to an object type with string values.
+
+```ts
+type ParamsToObject<T extends ParamsArray> = {
+  [K in T[number]]: string;
+};
+```
+
+**Examples:**
+```ts
+type SingleParam = ParamsToObject<readonly ['id']>;
+// Result: { id: string }
+
+type MultipleParams = ParamsToObject<readonly ['ownerId', 'slug']>;
+// Result: { ownerId: string; slug: string }
+
+type NoParams = ParamsToObject<readonly []>;
+// Result: {}
+```
+
+## Schema Type Utilities
+
+### IsLeaf
+
+Determines if a schema node type is a leaf node.
+
+```ts
+type IsLeaf<T> = T extends { _params: ParamsArray }
+  ? true
+  : T extends Record<string, never>
+    ? true
+    : keyof T extends '_params'
+      ? true
+      : false;
+```
+
+**Rules:**
+- `{}` (empty object) → `true`
+- `{ _params: [...] }` → `true`
+- `{ _params: [...], list: {} }` → `false` (has other keys)
+- `{ list: {}, byId: {} }` → `false` (has children)
+
+**Examples:**
+```ts
+type Test1 = IsLeaf<{}>;                              // true
+type Test2 = IsLeaf<{ _params: ['id'] }>;             // true
+type Test3 = IsLeaf<{ list: {} }>;                    // false
+type Test4 = IsLeaf<{ _params: ['id']; list: {} }>;   // false
+```
+
+### ExtractParams
+
+Extracts the params array from a schema node type.
+
+```ts
+type ExtractParams<T> = T extends { _params: infer P extends ParamsArray }
+  ? P
+  : readonly [];
+```
+
+**Examples:**
+```ts
+type Params1 = ExtractParams<{ _params: ['id'] }>;
+// Result: ['id']
+
+type Params2 = ExtractParams<{ _params: ['a', 'b'] }>;
+// Result: ['a', 'b']
+
+type Params3 = ExtractParams<{}>;
+// Result: readonly []
+```
+
+## Node Interfaces
+
+### LeafNode
+
+Interface for leaf nodes in the cache tree.
+
+```ts
+interface LeafNode<P extends ParamsArray = readonly []> {
+  /** Register cache tags (call inside 'use cache' functions) */
+  cacheTag: P['length'] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
+
+  /** Stale-while-revalidate invalidation */
+  revalidateTag: P['length'] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
+
+  /** Expire immediately and fetch fresh */
+  updateTag: P['length'] extends 0
+    ? () => void
+    : (params: ParamsToObject<P>) => void;
+
+  /** Raw path for debugging */
+  _path: string;
+}
+```
+
+**Conditional Signatures:**
+- If `P` is empty (`readonly []`), methods take no arguments
+- If `P` has elements, methods require a params object
+
+**Examples:**
+```ts
+// LeafNode with no params
+const listNode: LeafNode<readonly []> = {
+  cacheTag: () => {},
+  revalidateTag: () => {},
+  updateTag: () => {},
+  _path: 'users/list',
+};
+listNode.cacheTag(); // No args
+
+// LeafNode with params
+const byIdNode: LeafNode<readonly ['id']> = {
+  cacheTag: (params) => {},
+  revalidateTag: (params) => {},
+  updateTag: (params) => {},
+  _path: 'users/byId',
+};
+byIdNode.cacheTag({ id: '123' }); // Requires params
+```
+
+### BranchNode
+
+Interface for branch nodes in the cache tree.
+
+```ts
+interface BranchNode {
+  /** Invalidate entire subtree */
+  revalidateTag: () => void;
+
+  /** Update entire subtree */
+  updateTag: () => void;
+
+  /** Raw path for debugging */
+  _path: string;
+}
+```
+
+**Note:** Branch nodes never take parameters since they operate on entire subtrees.
+
+## Tree Types
+
+### BuildTree
+
+Recursively builds the cache tree type from a schema type.
+
+```ts
+type BuildTree<T, Prefix extends string = ''> = {
+  [K in keyof T as K extends '_params' ? never : K]: IsLeaf<T[K]> extends true
+    ? LeafNode<ExtractParams<T[K]>>
+    : BuildTree<T[K], `${Prefix}${K & string}/`> & BranchNode;
+} & (Prefix extends '' ? object : BranchNode);
+```
+
+**How it works:**
+1. Iterates over keys in `T`, excluding `_params`
+2. For each key, checks if the value is a leaf (`IsLeaf`)
+3. If leaf: creates `LeafNode<ExtractParams<...>>`
+4. If branch: recursively builds `BuildTree` and intersects with `BranchNode`
+5. Non-root nodes are intersected with `BranchNode` for subtree operations
+
+### ScopedCache
+
+The final cache type returned by `createCache()`.
+
+```ts
+type ScopedCache<T, Scopes extends readonly string[]> = {
+  [S in Scopes[number]]: BuildTree<T> & BranchNode;
+} & BuildTree<T> & BranchNode;
+```
+
+**Structure:**
+- One property per scope name, each containing `BuildTree<T> & BranchNode`
+- Plus the root-level `BuildTree<T>` for unscoped (cross-scope) access
+- Plus `BranchNode` at the root for `revalidateTag()` and `updateTag()`
+
+**Example:**
+```ts
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+
+const scopes = ['admin', 'public'] as const;
+
+type MyCache = ScopedCache<typeof schema, typeof scopes>;
+
+// MyCache has:
+// - cache.admin.users.list (LeafNode<[]>)
+// - cache.admin.users.byId (LeafNode<['id']>)
+// - cache.admin.users (BranchNode)
+// - cache.admin (BranchNode)
+// - cache.public.users.list (LeafNode<[]>)
+// - cache.public.users.byId (LeafNode<['id']>)
+// - cache.public.users (BranchNode)
+// - cache.public (BranchNode)
+// - cache.users.list (LeafNode<[]>) - unscoped
+// - cache.users.byId (LeafNode<['id']>) - unscoped
+// - cache.users (BranchNode) - unscoped
+// - cache.revalidateTag() - root BranchNode
+// - cache.updateTag() - root BranchNode
+```
+
+## Options Type
+
+### CacheOptions
+
+Configuration options for `createCache()`.
+
+```ts
+interface CacheOptions {
+  /** next/cache cacheTag function */
+  cacheTag?: (...tags: string[]) => void;
+
+  /** next/cache revalidateTag function */
+  revalidateTag?: (tag: string, profile?: string | { expire?: number }) => void;
+
+  /** next/cache updateTag function */
+  updateTag?: (tag: string) => void;
+}
+```
+
+**All properties are optional:**
+- If not provided, no-op functions are used (safe for testing)
+- In production, pass the actual Next.js functions
+
+**Example:**
+```ts
+import { cacheTag, revalidateTag, updateTag } from 'next/cache';
+
+const options: CacheOptions = {
+  cacheTag,
+  revalidateTag,
+  updateTag,
+};
+```
+
+## Using Types in Your Code
+
+### Extracting Types from Your Cache
+
+```ts
+const cache = createCache(schema, scopes, options);
+
+// Get the full cache type
+type MyCache = typeof cache;
+
+// Get a specific node type
+type UserByIdNode = typeof cache.admin.users.byId;
+// UserByIdNode is LeafNode<readonly ['id']>
+```
+
+### Type-Safe Helper Functions
+
+```ts
+import type { LeafNode, ParamsToObject } from 'next-typed-cache';
+
+// Helper that works with any leaf node
+function invalidateLeaf<P extends readonly string[]>(
+  node: LeafNode<P>,
+  params: ParamsToObject<P>
+) {
+  node.revalidateTag(params as any);
+  console.log(`Invalidated: ${node._path}`);
+}
+
+// Usage
+invalidateLeaf(cache.admin.users.byId, { id: '123' });
+```
+
+### Typing Custom Cache Wrappers
+
+```ts
+import type { ScopedCache, CacheOptions } from 'next-typed-cache';
+
+function createAppCache<T extends Record<string, unknown>>(
+  schema: T,
+  options: CacheOptions
+): ScopedCache<T, readonly ['admin', 'public']> {
+  return createCache(schema, ['admin', 'public'] as const, options);
+}
+```
+
+## TypeScript Requirements
+
+For full type safety:
+
+1. **Use `as const`** on schemas and scopes:
+   ```ts
+   const schema = { ... } as const;
+   const scopes = ['admin', 'public'] as const;
+   ```
+
+2. **Enable strict mode** in `tsconfig.json`:
+   ```json
+   {
+     "compilerOptions": {
+       "strict": true
+     }
+   }
+   ```
+
+3. **TypeScript 5.0+** recommended for best inference
+
+## See Also
+
+- [createCache()](/docs/api-reference/create-cache) - Using these types
+- [Schema Design](/docs/concepts/schema-design) - Defining schemas
+- [Cache Methods](/docs/api-reference/cache-methods) - Node method details

@@ -1,0 +1,335 @@
+---
+title: Schema Design
+description: Learn how to design effective cache schemas for your application
+---
+
+# Designing Your Cache Schema
+
+The schema is the foundation of `next-typed-cache`. A well-designed schema makes your caching strategy intuitive and maintainable.
+
+## Understanding the Schema Structure
+
+Think of your schema as a tree with three types of nodes:
+
+- **Root** - The top level of your schema
+- **Branch nodes** - Intermediate nodes that group related resources
+- **Leaf nodes** - End points where you actually cache and invalidate data
+
+```ts
+const schema = {
+  // Branch: groups blog-related resources
+  blog: {
+    // Branch: groups post operations
+    posts: {
+      list: {},                              // Leaf: no params
+      byId: { _params: ['id'] as const },    // Leaf: with params
+    },
+    categories: {
+      list: {},                              // Leaf: no params
+    },
+  },
+  // Leaf at root level
+  config: {},
+} as const;
+```
+
+## Leaf Nodes
+
+Leaf nodes are where you define cacheable resources. They come in two forms:
+
+### Without Parameters
+
+Use an empty object `{}` for resources that don't require identification:
+
+```ts
+const schema = {
+  users: {
+    list: {},      // Get all users
+    count: {},     // Get user count
+  },
+  settings: {
+    global: {},    // Get global settings
+  },
+} as const;
+```
+
+Usage:
+
+```ts
+cache.admin.users.list.cacheTag();  // No params needed
+cache.admin.users.list.revalidateTag();
+```
+
+### With Parameters
+
+Use `{ _params: [...] as const }` for resources that require identification:
+
+```ts
+const schema = {
+  users: {
+    byId: { _params: ['id'] as const },
+    byEmail: { _params: ['email'] as const },
+  },
+  posts: {
+    bySlug: { _params: ['slug'] as const },
+    byAuthorAndYear: { _params: ['authorId', 'year'] as const },  // Multiple params
+  },
+} as const;
+```
+
+Usage:
+
+```ts
+cache.admin.users.byId.cacheTag({ id: '123' });
+cache.admin.posts.byAuthorAndYear.revalidateTag({ authorId: 'a1', year: '2024' });
+```
+
+<Callout type="info">
+The `_params` key is reserved. Don't use it for anything else in your schema.
+</Callout>
+
+## Branch Nodes
+
+Branch nodes group related resources and enable bulk invalidation:
+
+```ts
+const schema = {
+  blog: {                    // Branch
+    posts: {                 // Branch
+      list: {},              // Leaf
+      byId: { _params: ['id'] as const },  // Leaf
+    },
+    drafts: {                // Branch
+      list: {},
+      byId: { _params: ['id'] as const },
+    },
+  },
+} as const;
+```
+
+Branch nodes automatically get `revalidateTag()` and `updateTag()` methods:
+
+```ts
+// Invalidate all blog data
+cache.admin.blog.revalidateTag();
+
+// Invalidate all posts (but not drafts)
+cache.admin.blog.posts.revalidateTag();
+
+// Invalidate specific post
+cache.admin.blog.posts.byId.revalidateTag({ id: '123' });
+```
+
+## Naming Conventions
+
+Consistent naming makes your schema intuitive:
+
+### For Collections
+
+```ts
+const schema = {
+  users: {
+    list: {},           // All items
+    count: {},          // Count of items
+    recent: {},         // Recent items
+  },
+} as const;
+```
+
+### For Lookups
+
+Use `by` prefix to indicate the lookup key:
+
+```ts
+const schema = {
+  users: {
+    byId: { _params: ['id'] as const },
+    byEmail: { _params: ['email'] as const },
+    byUsername: { _params: ['username'] as const },
+  },
+} as const;
+```
+
+### For Multiple Parameters
+
+Use `And` to join parameter names:
+
+```ts
+const schema = {
+  comments: {
+    byPostAndUser: { _params: ['postId', 'userId'] as const },
+  },
+  projects: {
+    byOwnerAndSlug: { _params: ['ownerId', 'slug'] as const },
+  },
+} as const;
+```
+
+## Schema Evolution
+
+### Adding New Resources
+
+Adding new resources is always safe - it's backward compatible:
+
+```ts
+// Before
+const schema = {
+  users: { list: {}, byId: { _params: ['id'] as const } },
+} as const;
+
+// After - added posts
+const schema = {
+  users: { list: {}, byId: { _params: ['id'] as const } },
+  posts: { list: {}, byId: { _params: ['id'] as const } },  // New!
+} as const;
+```
+
+### Renaming Resources
+
+When you rename a resource, TypeScript shows you every location that needs updating:
+
+```ts
+// Changed 'byId' to 'byUserId'
+// TypeScript error at every usage:
+cache.admin.users.byId.cacheTag({ id: '123' });
+//                ^^^^
+// Property 'byId' does not exist. Did you mean 'byUserId'?
+```
+
+### Adding Parameters
+
+If you add a parameter to an existing resource, TypeScript catches missing params:
+
+```ts
+// Before
+byId: { _params: ['id'] as const }
+
+// After - added tenantId
+byId: { _params: ['tenantId', 'id'] as const }
+
+// TypeScript error:
+cache.admin.users.byId.cacheTag({ id: '123' });
+// Property 'tenantId' is missing
+```
+
+## Best Practices
+
+### 1. Mirror Your Data Model
+
+Your schema should reflect your data structure:
+
+```ts
+// If your database has:
+// - users table
+// - posts table (belongs to user)
+// - comments table (belongs to post)
+
+const schema = {
+  users: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+  posts: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byAuthor: { _params: ['authorId'] as const },
+  },
+  comments: {
+    byPost: { _params: ['postId'] as const },
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+```
+
+### 2. Keep Schemas Shallow When Possible
+
+Deep nesting adds complexity. Only nest when it provides clear organizational value:
+
+```ts
+// Prefer this
+const schema = {
+  users: { list: {}, byId: { _params: ['id'] as const } },
+  posts: { list: {}, byId: { _params: ['id'] as const } },
+} as const;
+
+// Over this (unless you need blog.revalidateTag())
+const schema = {
+  blog: {
+    users: { list: {}, byId: { _params: ['id'] as const } },
+    posts: { list: {}, byId: { _params: ['id'] as const } },
+  },
+} as const;
+```
+
+### 3. Group for Bulk Invalidation
+
+Use branches when you need to invalidate related resources together:
+
+```ts
+const schema = {
+  // Good: can invalidate all dashboard data at once
+  dashboard: {
+    stats: {},
+    recentActivity: {},
+    notifications: {},
+  },
+} as const;
+
+// cache.admin.dashboard.revalidateTag() invalidates all three
+```
+
+### 4. Use Descriptive Parameter Names
+
+Parameter names appear in your code, so make them clear:
+
+```ts
+// Less clear
+byId: { _params: ['id'] as const }
+cache.admin.comments.byId.cacheTag({ id: commentId });
+
+// More clear
+byCommentId: { _params: ['commentId'] as const }
+cache.admin.comments.byCommentId.cacheTag({ commentId });
+```
+
+## Real-World Example
+
+Here's a complete schema for a blog platform:
+
+```ts
+const schema = {
+  blog: {
+    posts: {
+      list: {},
+      featured: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+      byCategory: { _params: ['categoryId'] as const },
+    },
+    drafts: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      byAuthor: { _params: ['authorId'] as const },
+    },
+    categories: {
+      list: {},
+      byId: { _params: ['id'] as const },
+      bySlug: { _params: ['slug'] as const },
+    },
+  },
+  authors: {
+    list: {},
+    byId: { _params: ['id'] as const },
+    byUsername: { _params: ['username'] as const },
+  },
+  comments: {
+    byPost: { _params: ['postId'] as const },
+    byAuthor: { _params: ['authorId'] as const },
+  },
+  media: {
+    list: {},
+    byId: { _params: ['id'] as const },
+  },
+} as const;
+```

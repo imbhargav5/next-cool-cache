@@ -1,0 +1,10 @@
+{
+  "title": "Scenarios",
+  "pages": [
+    "blog-cms",
+    "user-profiles",
+    "saas-billing",
+    "ecommerce-catalog",
+    "multi-tenant"
+  ]
+}
