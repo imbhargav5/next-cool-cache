@@ -49,7 +49,7 @@ const pkgChanges = new Map(
 );
 
 // Update this array with package names that have peer dependencies to track
-for (const peerPkg of ["next-typed-cache"]) {
+for (const peerPkg of ["next-cool-cache"]) {
   const peerPkgChange = pkgChanges.get(peerPkg);
   if (!peerPkgChange?.versionChanged) {
     continue;

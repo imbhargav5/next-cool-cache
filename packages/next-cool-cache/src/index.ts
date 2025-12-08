@@ -1,11 +1,11 @@
 /**
- * next-typed-cache
+ * next-cool-cache
  *
  * Type-safe cache tag management for Next.js 16.
  *
  * @example
  * ```ts
- * import { createCache } from 'next-typed-cache';
+ * import { createCache } from 'next-cool-cache';
  * import { cacheTag, revalidateTag, updateTag } from 'next/cache';
  *
  * const schema = {

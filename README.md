@@ -1,4 +1,4 @@
-# next-typed-cache
+# next-cool-cache
 
 Type-safe cache tag management for Next.js 16+. Stop wrestling with string-based cache tags and let TypeScript catch your mistakes at compile time.
 
@@ -9,7 +9,7 @@ Next.js 16 introduces powerful cache primitives (`cacheTag`, `revalidateTag`, `u
 ### Problem 1: Silent Typos Break Your Cache
 
 ```typescript
-// ❌ WITHOUT next-typed-cache - A typo that ruins your day
+// ❌ WITHOUT next-cool-cache - A typo that ruins your day
 
 async function getUser(id: string) {
   'use cache';
@@ -28,7 +28,7 @@ async function updateUser(id: string, data: UserData) {
 ```
 
 ```typescript
-// ✅ WITH next-typed-cache - TypeScript has your back
+// ✅ WITH next-cool-cache - TypeScript has your back
 
 cache.admin.users.byId.cacheTag({ id });       // Autocomplete guides you
 cache.admin.users.byId.revalidateTag({ id });  // Always matches
@@ -47,7 +47,7 @@ Imagine you're building a blog with drafts and published posts. When an admin ed
 Without scoped caching, you'd need to manage this manually with different tag prefixes and hope you get it right everywhere.
 
 ```typescript
-// ❌ WITHOUT next-typed-cache - Manual scope management
+// ❌ WITHOUT next-cool-cache - Manual scope management
 
 async function updateBlogPost(postId: string, data: BlogPostData) {
   await db.posts.update(postId, data);
@@ -64,7 +64,7 @@ async function updateBlogPost(postId: string, data: BlogPostData) {
 ```
 
 ```typescript
-// ✅ WITH next-typed-cache - Scopes are first-class citizens
+// ✅ WITH next-cool-cache - Scopes are first-class citizens
 
 async function updateBlogPost(postId: string, data: BlogPostData) {
   await db.posts.update(postId, data);
@@ -82,11 +82,11 @@ async function updateBlogPost(postId: string, data: BlogPostData) {
 ## Installation
 
 ```bash
-npm install next-typed-cache
+npm install next-cool-cache
 # or
-pnpm add next-typed-cache
+pnpm add next-cool-cache
 # or
-yarn add next-typed-cache
+yarn add next-cool-cache
 ```
 
 ## Quick Start
@@ -95,7 +95,7 @@ yarn add next-typed-cache
 
 ```typescript
 // lib/cache.ts
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 // Define your cache structure
@@ -320,7 +320,7 @@ cache.admin.blog.posts.byId.revalidateTag({ id });
 The cache functions are injected, so you can test without Next.js:
 
 ```typescript
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 
 const mockCacheTag = jest.fn();
 const mockRevalidateTag = jest.fn();
