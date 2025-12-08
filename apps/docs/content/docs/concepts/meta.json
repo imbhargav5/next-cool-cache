@@ -1,8 +1,4 @@
 {
   "title": "Concepts",
-  "pages": [
-    "schema-design",
-    "scopes",
-    "hierarchical-tagging"
-  ]
+  "pages": ["schema-design", "scopes", "hierarchical-tagging"]
 }

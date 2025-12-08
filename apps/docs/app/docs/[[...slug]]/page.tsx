@@ -1,14 +1,14 @@
+import type { DocData } from "fumadocs-mdx/runtime/types";
+import { Callout } from "fumadocs-ui/components/callout";
+import { Card, Cards } from "fumadocs-ui/components/card";
 import {
-  DocsPage,
   DocsBody,
   DocsDescription,
+  DocsPage,
   DocsTitle,
-} from 'fumadocs-ui/page';
-import { source } from '@/lib/source';
-import { notFound } from 'next/navigation';
-import { Card, Cards } from 'fumadocs-ui/components/card';
-import { Callout } from 'fumadocs-ui/components/callout';
-import type { DocData } from 'fumadocs-mdx/runtime/types';
+} from "fumadocs-ui/page";
+import { notFound } from "next/navigation";
+import { source } from "@/lib/source";
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;

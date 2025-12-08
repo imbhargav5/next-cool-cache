@@ -1,14 +1,14 @@
-import { DocsLayout } from 'fumadocs-ui/layouts/docs';
-import type { ReactNode } from 'react';
-import { source } from '@/lib/source';
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import type { ReactNode } from "react";
+import { source } from "@/lib/source";
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
-      tree={source.pageTree}
       nav={{
-        title: 'next-typed-cache',
+        title: "next-typed-cache",
       }}
+      tree={source.pageTree}
     >
       {children}
     </DocsLayout>
