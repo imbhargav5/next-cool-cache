@@ -80,7 +80,7 @@ Public blog listing with aggressive caching:
 import { cache } from '@/lib/cache';
 
 async function getPublishedPosts() {
-  'use cache';
+  'use cache: remote';
   cache.public.blog.posts.list.cacheTag();
 
   return db.posts.findMany({
@@ -91,7 +91,7 @@ async function getPublishedPosts() {
 }
 
 async function getFeaturedPosts() {
-  'use cache';
+  'use cache: remote';
   cache.public.blog.posts.featured.cacheTag();
 
   return db.posts.findMany({
@@ -122,7 +122,7 @@ export default async function BlogPage() {
 import { cache } from '@/lib/cache';
 
 async function getPostBySlug(slug: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.blog.posts.bySlug.cacheTag({ slug });
 
   return db.posts.findUnique({
@@ -132,7 +132,7 @@ async function getPostBySlug(slug: string) {
 }
 
 async function getComments(postId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.comments.byPost.cacheTag({ postId });
 
   return db.comments.findMany({
@@ -305,7 +305,7 @@ The admin dashboard needs real-time data:
 import { cache } from '@/lib/cache';
 
 async function getAdminPostsList() {
-  'use cache';
+  'use cache: remote';
   cache.admin.blog.posts.list.cacheTag();
 
   return db.posts.findMany({
@@ -315,7 +315,7 @@ async function getAdminPostsList() {
 }
 
 async function getDraftsList() {
-  'use cache';
+  'use cache: remote';
   cache.admin.blog.drafts.list.cacheTag();
 
   return db.posts.findMany({

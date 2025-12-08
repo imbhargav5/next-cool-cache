@@ -73,7 +73,7 @@ When viewing another user's profile:
 import { cache } from '@/lib/cache';
 
 async function getPublicProfile(username: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.users.byUsername.cacheTag({ username });
 
   return db.users.findUnique({
@@ -91,14 +91,14 @@ async function getPublicProfile(username: string) {
 }
 
 async function getFollowerCount(userId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.users.followers.count.cacheTag({ userId });
 
   return db.followers.count({ where: { followingId: userId } });
 }
 
 async function getFollowingCount(userId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.users.following.count.cacheTag({ userId });
 
   return db.followers.count({ where: { followerId: userId } });
@@ -132,7 +132,7 @@ import { cache } from '@/lib/cache';
 import { getCurrentUser } from '@/lib/auth';
 
 async function getSelfProfile(userId: string) {
-  'use cache';
+  'use cache: private';
   cache.self.users.byId.cacheTag({ id: userId });
 
   return db.users.findUnique({
@@ -152,7 +152,7 @@ async function getSelfProfile(userId: string) {
 }
 
 async function getSelfSettings(userId: string) {
-  'use cache';
+  'use cache: private';
   cache.self.users.settings.byUserId.cacheTag({ userId });
 
   return db.userSettings.findUnique({
@@ -299,7 +299,7 @@ import { cache } from '@/lib/cache';
 import { getCurrentUser } from '@/lib/auth';
 
 async function getPersonalizedFeed(userId: string) {
-  'use cache';
+  'use cache: private';
   cache.self.feed.byUserId.cacheTag({ userId });
 
   // Get posts from users the current user follows
@@ -318,7 +318,7 @@ async function getPersonalizedFeed(userId: string) {
 }
 
 async function getGlobalFeed() {
-  'use cache';
+  'use cache: remote';
   cache.public.feed.global.cacheTag();
 
   return db.posts.findMany({
@@ -337,7 +337,7 @@ async function getGlobalFeed() {
 import { cache } from '@/lib/cache';
 
 async function getAdminUserView(userId: string) {
-  'use cache';
+  'use cache: remote';
   cache.admin.users.byId.cacheTag({ id: userId });
 
   return db.users.findUnique({
@@ -380,7 +380,7 @@ Use different cache entries for public vs private data:
 ```ts
 // Public profile - anyone can see
 async function getPublicProfile(userId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.users.byId.cacheTag({ id: userId });
 
   return db.users.findUnique({
@@ -397,7 +397,7 @@ async function getPublicProfile(userId: string) {
 
 // Private profile - only the user themselves
 async function getPrivateProfile(userId: string) {
-  'use cache';
+  'use cache: private';
   cache.self.users.byId.cacheTag({ id: userId });
 
   return db.users.findUnique({

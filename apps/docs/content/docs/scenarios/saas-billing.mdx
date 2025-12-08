@@ -79,7 +79,7 @@ The pricing page should be heavily cached for performance:
 import { cache } from '@/lib/cache';
 
 async function getPricingPlans() {
-  'use cache';
+  'use cache: remote';
   cache.public.pricing.plans.list.cacheTag();
 
   return db.plans.findMany({
@@ -90,7 +90,7 @@ async function getPricingPlans() {
 }
 
 async function getAddons() {
-  'use cache';
+  'use cache: remote';
   cache.public.pricing.addons.list.cacheTag();
 
   return db.addons.findMany({
@@ -161,7 +161,7 @@ Subscription status affects feature access and must be current:
 import { cache } from '@/lib/cache';
 
 async function getSubscription(orgId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.subscriptions.byOrgId.cacheTag({ orgId });
 
   return db.subscriptions.findUnique({
@@ -171,7 +171,7 @@ async function getSubscription(orgId: string) {
 }
 
 async function getUsageLimits(orgId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.limits.byOrgId.cacheTag({ orgId });
 
   const subscription = await db.subscriptions.findUnique({
@@ -254,7 +254,7 @@ import { cache } from '@/lib/cache';
 import { getCurrentOrg } from '@/lib/auth';
 
 async function getInvoices(orgId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.invoices.byOrgId.cacheTag({ orgId });
 
   return db.invoices.findMany({
@@ -265,7 +265,7 @@ async function getInvoices(orgId: string) {
 }
 
 async function getUpcomingInvoice(orgId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.invoices.upcoming.cacheTag({ orgId });
 
   // Calculate upcoming invoice from Stripe or your billing system
@@ -300,7 +300,7 @@ import { cache } from '@/lib/cache';
 
 // Current period usage - needs to be relatively fresh
 async function getCurrentUsage(orgId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.usage.current.cacheTag({ orgId });
 
   return db.usage.aggregate({
@@ -314,7 +314,7 @@ async function getCurrentUsage(orgId: string) {
 
 // Historical usage - can be cached longer
 async function getUsageHistory(orgId: string, period: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.usage.byOrgAndPeriod.cacheTag({ orgId, period });
 
   return db.usage.findMany({
@@ -395,7 +395,7 @@ export async function POST(request: Request) {
 import { cache } from '@/lib/cache';
 
 async function getBillingOverview() {
-  'use cache';
+  'use cache: remote';
   cache.admin.subscriptions.list.cacheTag();
 
   return {
@@ -406,7 +406,7 @@ async function getBillingOverview() {
 }
 
 async function getRecentInvoices() {
-  'use cache';
+  'use cache: remote';
   cache.admin.invoices.list.cacheTag();
 
   return db.invoices.findMany({

@@ -126,7 +126,7 @@ export const cache = createCache(schema, scopes, {
 
 ```ts
 // In a cached function
-'use cache';
+'use cache: remote';
 cache.public.blog.posts.byId.cacheTag({ id: postId });
 const post = await fetchPost(postId);
 ```
