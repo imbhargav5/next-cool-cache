@@ -5,7 +5,7 @@ description: Understand how hierarchical cache tags enable powerful invalidation
 
 # Hierarchical Tagging
 
-One of the most powerful features of `next-typed-cache` is automatic hierarchical tag registration. This enables you to invalidate a parent and have all children automatically refresh.
+One of the most powerful features of `next-cool-cache` is automatic hierarchical tag registration. This enables you to invalidate a parent and have all children automatically refresh.
 
 ## The Problem with Flat Tags
 
@@ -34,7 +34,7 @@ This is error-prone and becomes unmanageable as your application grows.
 
 ## How Hierarchical Tagging Works
 
-With `next-typed-cache`, calling `cacheTag()` automatically registers the tag AND all its ancestors:
+With `next-cool-cache`, calling `cacheTag()` automatically registers the tag AND all its ancestors:
 
 ```ts
 cache.admin.users.byId.cacheTag({ id: '123' });
@@ -214,7 +214,7 @@ async function deleteUser(userId: string) {
 
 ## How Tags Are Built
 
-Under the hood, `next-typed-cache` uses these utility functions:
+Under the hood, `next-cool-cache` uses these utility functions:
 
 ### buildTag()
 

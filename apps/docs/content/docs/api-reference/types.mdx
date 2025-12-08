@@ -1,11 +1,11 @@
 ---
 title: Types
-description: TypeScript type definitions exported by next-typed-cache
+description: TypeScript type definitions exported by next-cool-cache
 ---
 
 # TypeScript Types
 
-`next-typed-cache` exports several TypeScript types for advanced use cases and custom extensions.
+`next-cool-cache` exports several TypeScript types for advanced use cases and custom extensions.
 
 ## Import
 
@@ -20,7 +20,7 @@ import type {
   BuildTree,
   ScopedCache,
   CacheOptions,
-} from 'next-typed-cache';
+} from 'next-cool-cache';
 ```
 
 ## Parameter Types
@@ -305,7 +305,7 @@ type UserByIdNode = typeof cache.admin.users.byId;
 ### Type-Safe Helper Functions
 
 ```ts
-import type { LeafNode, ParamsToObject } from 'next-typed-cache';
+import type { LeafNode, ParamsToObject } from 'next-cool-cache';
 
 // Helper that works with any leaf node
 function invalidateLeaf<P extends readonly string[]>(
@@ -323,7 +323,7 @@ invalidateLeaf(cache.admin.users.byId, { id: '123' });
 ### Typing Custom Cache Wrappers
 
 ```ts
-import type { ScopedCache, CacheOptions } from 'next-typed-cache';
+import type { ScopedCache, CacheOptions } from 'next-cool-cache';
 
 function createAppCache<T extends Record<string, unknown>>(
   schema: T,

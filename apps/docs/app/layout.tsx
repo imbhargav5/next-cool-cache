@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "next-typed-cache",
+  title: "next-cool-cache",
   description: "Type-safe cache tag management for Next.js 16",
 };
 

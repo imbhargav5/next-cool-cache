@@ -5,7 +5,7 @@ description: Type-safe cache tag management for Next.js 16
 
 # Stop Wrestling with String-Based Cache Tags
 
-`next-typed-cache` brings compile-time safety to Next.js cache management. No more typos, no more silent failures, no more debugging mysterious stale data issues.
+`next-cool-cache` brings compile-time safety to Next.js cache management. No more typos, no more silent failures, no more debugging mysterious stale data issues.
 
 ## The Problem
 
@@ -27,10 +27,10 @@ This bug is nearly impossible to catch:
 
 ## The Solution
 
-With `next-typed-cache`, your IDE catches these errors instantly:
+With `next-cool-cache`, your IDE catches these errors instantly:
 
 ```ts
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
@@ -96,7 +96,7 @@ Pure TypeScript types with minimal runtime. Tags are simple strings under the ho
 
 ```ts
 // cache.ts
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
@@ -143,7 +143,7 @@ cache.public.blog.posts.byId.revalidateTag({ id: postId });
 
 <Cards>
   <Card title="Getting Started" href="/docs/getting-started">
-    Install and set up next-typed-cache in 5 minutes
+    Install and set up next-cool-cache in 5 minutes
   </Card>
   <Card title="Scenarios" href="/docs/scenarios/blog-cms">
     Learn through real-world examples

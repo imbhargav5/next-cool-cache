@@ -1,11 +1,11 @@
 ---
 title: Getting Started
-description: Install and configure next-typed-cache in your Next.js project
+description: Install and configure next-cool-cache in your Next.js project
 ---
 
 # Getting Started
 
-Get up and running with `next-typed-cache` in about 5 minutes.
+Get up and running with `next-cool-cache` in about 5 minutes.
 
 ## Prerequisites
 
@@ -16,15 +16,15 @@ Get up and running with `next-typed-cache` in about 5 minutes.
 ## Installation
 
 ```bash
-npm install next-typed-cache
+npm install next-cool-cache
 ```
 
 ```bash
-pnpm add next-typed-cache
+pnpm add next-cool-cache
 ```
 
 ```bash
-yarn add next-typed-cache
+yarn add next-cool-cache
 ```
 
 ## Step 1: Define Your Schema
@@ -32,7 +32,7 @@ yarn add next-typed-cache
 Create a cache configuration file (e.g., `lib/cache.ts`):
 
 ```ts
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 // Define your cache schema
@@ -89,7 +89,7 @@ export const cache = createCache(schema, scopes, {
 
 ```ts
 // lib/cache.ts
-import { createCache } from 'next-typed-cache';
+import { createCache } from 'next-cool-cache';
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
 const schema = {
