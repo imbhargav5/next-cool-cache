@@ -124,7 +124,7 @@ Use `cacheTag()` inside functions marked with `'use cache'`:
 import { cache } from '@/lib/cache';
 
 async function getUser(id: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.users.byId.cacheTag({ id });
 
   const user = await db.users.findUnique({ where: { id } });

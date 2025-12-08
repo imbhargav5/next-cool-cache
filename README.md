@@ -12,7 +12,7 @@ Next.js 16 introduces powerful cache primitives (`cacheTag`, `revalidateTag`, `u
 // ❌ WITHOUT next-cool-cache - A typo that ruins your day
 
 async function getUser(id: string) {
-  'use cache';
+  'use cache: remote';
   cacheTag(`users/byId:${id}`);  // Tag: "users/byId:123"
   return db.users.findById(id);
 }
@@ -132,7 +132,7 @@ export const cache = createCache(schema, scopes, {
 ```typescript
 // In a cached function
 async function getBlogPost(id: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.blog.posts.byId.cacheTag({ id });
   // → cacheTag('public/blog/posts/byId:<id>', 'public/blog/posts', 'public/blog', 'public', 'blog/posts/byId:<id>', 'blog/posts', 'blog')
   return db.posts.findById(id);
@@ -210,7 +210,7 @@ Register cache tags inside a `'use cache'` function. Automatically registers hie
 
 ```typescript
 async function getUser(id: string) {
-  'use cache';
+  'use cache: remote';
   cache.admin.users.byId.cacheTag({ id });
   // Registers: 'admin/users/byId:123', 'admin/users', 'admin', 'users/byId:123', 'users'
   return db.users.findById(id);

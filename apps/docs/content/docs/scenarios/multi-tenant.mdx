@@ -78,7 +78,7 @@ import { cache } from '@/lib/cache';
 import { getTenantFromSlug, requireTenantAccess } from '@/lib/tenant';
 
 async function getTenantOverview(tenantId: string) {
-  'use cache';
+  'use cache: private';
   cache['tenant-admin'].tenants.byId.cacheTag({ tenantId });
 
   return db.tenants.findUnique({
@@ -95,7 +95,7 @@ async function getTenantOverview(tenantId: string) {
 }
 
 async function getTenantProjects(tenantId: string) {
-  'use cache';
+  'use cache: private';
   cache['tenant-admin'].projects.byTenant.cacheTag({ tenantId });
 
   return db.projects.findMany({
@@ -106,7 +106,7 @@ async function getTenantProjects(tenantId: string) {
 }
 
 async function getTenantMembers(tenantId: string) {
-  'use cache';
+  'use cache: private';
   cache['tenant-admin'].members.byTenant.cacheTag({ tenantId });
 
   return db.members.findMany({
@@ -147,7 +147,7 @@ export default async function TenantDashboard({
 import { cache } from '@/lib/cache';
 
 async function getProject(tenantId: string, slug: string) {
-  'use cache';
+  'use cache: private';
   cache.member.projects.byTenantAndSlug.cacheTag({ tenantId, slug });
 
   return db.projects.findUnique({
@@ -276,7 +276,7 @@ export async function updateMemberRole(tenantId: string, userId: string, newRole
 import { cache } from '@/lib/cache';
 
 async function getTenantSettings(tenantId: string) {
-  'use cache';
+  'use cache: private';
   cache['tenant-admin'].tenants.settings.byTenantId.cacheTag({ tenantId });
 
   return db.tenantSettings.findUnique({
@@ -315,7 +315,7 @@ import { cache } from '@/lib/cache';
 import { requireSuperAdmin } from '@/lib/auth';
 
 async function getAllTenants() {
-  'use cache';
+  'use cache: remote';
   cache.superadmin.tenants.list.cacheTag();
 
   return db.tenants.findMany({
@@ -343,7 +343,7 @@ export default async function AdminTenantsPage() {
 
 // app/admin/tenants/[id]/page.tsx
 async function getAdminTenantView(tenantId: string) {
-  'use cache';
+  'use cache: remote';
   cache.superadmin.tenants.byId.cacheTag({ tenantId });
 
   return db.tenants.findUnique({
@@ -436,7 +436,7 @@ export async function migrateTenantsToNewPlan(oldPlanId: string, newPlanId: stri
 import { cache } from '@/lib/cache';
 
 async function getAuditLog(tenantId: string, date?: string) {
-  'use cache';
+  'use cache: private';
 
   if (date) {
     cache['tenant-admin'].audit.byTenantAndDate.cacheTag({ tenantId, date });

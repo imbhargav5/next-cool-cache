@@ -27,7 +27,7 @@ cacheTag(params: { [key: string]: string }): void
 **Usage:**
 ```ts
 async function getUser(id: string) {
-  'use cache';
+  'use cache: remote';
 
   // Register the cache tag
   cache.admin.users.byId.cacheTag({ id });
@@ -36,7 +36,7 @@ async function getUser(id: string) {
 }
 
 async function getAllUsers() {
-  'use cache';
+  'use cache: remote';
 
   // No params needed for list endpoints
   cache.admin.users.list.cacheTag();
@@ -280,7 +280,7 @@ async function createPost(data: PostData) {
 
 // Read (cached)
 async function getPost(id: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.blog.posts.byId.cacheTag({ id });
 
   return db.posts.findUnique({ where: { id } });

@@ -82,7 +82,7 @@ export const cache = createCache(schema, scopes, {
 import { cache } from '@/lib/cache';
 
 async function getProductsList(page: number = 1) {
-  'use cache';
+  'use cache: remote';
   cache.public.products.list.cacheTag();
 
   return db.products.findMany({
@@ -98,7 +98,7 @@ async function getProductsList(page: number = 1) {
 }
 
 async function getFeaturedProducts() {
-  'use cache';
+  'use cache: remote';
   cache.public.products.featured.cacheTag();
 
   return db.products.findMany({
@@ -132,7 +132,7 @@ Product pages need separate caching for different concerns:
 import { cache } from '@/lib/cache';
 
 async function getProduct(slug: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.products.bySlug.cacheTag({ slug });
 
   return db.products.findUnique({
@@ -147,7 +147,7 @@ async function getProduct(slug: string) {
 }
 
 async function getProductInventory(productId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.products.inventory.byId.cacheTag({ productId });
 
   return db.inventory.findUnique({
@@ -157,7 +157,7 @@ async function getProductInventory(productId: string) {
 }
 
 async function getProductReviews(productId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.reviews.byProductId.cacheTag({ productId });
 
   return db.reviews.findMany({
@@ -169,7 +169,7 @@ async function getProductReviews(productId: string) {
 }
 
 async function getAverageRating(productId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.reviews.average.cacheTag({ productId });
 
   const result = await db.reviews.aggregate({
@@ -214,7 +214,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
 import { cache } from '@/lib/cache';
 
 async function getCategory(slug: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.categories.bySlug.cacheTag({ slug });
 
   return db.categories.findUnique({
@@ -224,7 +224,7 @@ async function getCategory(slug: string) {
 }
 
 async function getProductsByCategory(categoryId: string) {
-  'use cache';
+  'use cache: remote';
   cache.public.products.byCategory.cacheTag({ categoryId });
 
   return db.products.findMany({
@@ -338,7 +338,7 @@ async function getCart() {
 }
 
 async function getCartByUserId(userId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.cart.byUserId.cacheTag({ userId });
 
   return db.carts.findUnique({
@@ -356,7 +356,7 @@ async function getCartByUserId(userId: string) {
 }
 
 async function getCartBySessionId(sessionId: string) {
-  'use cache';
+  'use cache: private';
   cache.customer.cart.bySessionId.cacheTag({ sessionId });
 
   return db.carts.findUnique({
