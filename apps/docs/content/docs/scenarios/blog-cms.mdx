@@ -377,6 +377,110 @@ const scopes = ['admin', 'public', 'author'] as const;
 export const cache = createCache(schema, scopes);
 ```
 
+## Frequently Asked Questions
+
+### How do I edit a blog post and immediately view it?
+
+Use `updateTag()` to expire the cache immediately. The next request fetches fresh data.
+
+```ts
+// After updating the post in the database
+cache.admin.blog.posts.byId.updateTag({ id: postId });
+// → updateTag('admin/blog/posts/byId:post-123')
+```
+
+**UX**: The editor sees changes instantly on the next page load. No stale content is ever shown - but they may briefly see a loading state while fresh data loads.
+
+---
+
+### How do I edit a blog post and only revalidate it (stale-while-revalidate)?
+
+Use `revalidateTag()` to serve stale content while fetching fresh data in the background.
+
+```ts
+// After updating the post in the database
+cache.public.blog.posts.byId.revalidateTag({ id: postId });
+// → revalidateTag('public/blog/posts/byId:post-123', 'max')
+```
+
+**UX**: Public readers see the old content immediately (no loading spinner), then the page automatically updates with fresh content in the background. On their next visit, they see the updated post. This is ideal for public-facing pages where avoiding loading states is more important than instant freshness.
+
+---
+
+### How do I preview unpublished drafts without affecting the public cache?
+
+Use separate cache entries for drafts with the `author` scope, keeping them isolated from public content.
+
+```ts
+// Caching a draft (only for the author)
+async function getDraft(id: string) {
+  'use cache: remote';
+  cache.author.blog.drafts.byId.cacheTag({ id });
+  // → cacheTag('author/blog/drafts/byId:draft-123', 'author/blog/drafts', 'author/blog', 'author', 'blog/drafts/byId:draft-123', 'blog/drafts', 'blog')
+  return db.drafts.findById(id);
+}
+
+// When the author updates their draft
+cache.author.blog.drafts.byId.updateTag({ id: draftId });
+// → updateTag('author/blog/drafts/byId:draft-123')
+```
+
+**UX**: Authors see their own drafts instantly with immediate updates. Public readers never see draft content because it's cached under a different scope. When the draft is published, you invalidate both the draft cache and the public posts cache.
+
+---
+
+### How do I invalidate all posts by a specific author?
+
+Use the `byAuthor` tag with the author's ID to invalidate all their posts at once.
+
+```ts
+// When an author is banned or all their content needs refreshing
+cache.public.blog.posts.byAuthor.revalidateTag({ authorId: 'author-456' });
+// → revalidateTag('public/blog/posts/byAuthor:author-456', 'max')
+```
+
+**UX**: All posts by that author will be revalidated on the next request. Readers see stale content briefly, then fresh content loads in the background. This is useful for bulk operations like banning an author or when an author updates their display name.
+
+---
+
+### How do I handle cache when changing a post's category?
+
+Invalidate both the old and new category caches so listings update correctly.
+
+```ts
+async function changePostCategory(postId: string, oldCategoryId: string, newCategoryId: string) {
+  await db.posts.update({ where: { id: postId }, data: { categoryId: newCategoryId } });
+
+  // Invalidate the post itself
+  cache.public.blog.posts.byId.revalidateTag({ id: postId });
+  // → revalidateTag('public/blog/posts/byId:post-123', 'max')
+
+  // Invalidate old category (post should disappear from it)
+  cache.public.blog.posts.byCategory.revalidateTag({ categoryId: oldCategoryId });
+  // → revalidateTag('public/blog/posts/byCategory:old-cat', 'max')
+
+  // Invalidate new category (post should appear in it)
+  cache.public.blog.posts.byCategory.revalidateTag({ categoryId: newCategoryId });
+  // → revalidateTag('public/blog/posts/byCategory:new-cat', 'max')
+}
+```
+
+**UX**: The post disappears from the old category listing and appears in the new one. Readers browsing either category will see the correct posts after the background revalidation completes.
+
+---
+
+### Should comments use updateTag or revalidateTag?
+
+Use `revalidateTag()` for comments - slight staleness is acceptable and avoids loading spinners.
+
+```ts
+// When a new comment is added
+cache.public.comments.byPost.revalidateTag({ postId: 'post-123' });
+// → revalidateTag('public/comments/byPost:post-123', 'max')
+```
+
+**UX**: When someone adds a comment, other readers continue seeing the cached comments instantly (no loading spinner). The new comment appears in the background and shows on subsequent page loads. For the commenter themselves, you might want to use `updateTag()` on their scope so they see their own comment immediately.
+
 ## Key Takeaways
 
 1. **Separate concerns by scope**: Editors, authors, and readers each have different cache strategies

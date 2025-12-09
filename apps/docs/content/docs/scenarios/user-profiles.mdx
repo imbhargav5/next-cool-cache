@@ -428,6 +428,183 @@ export async function deleteAccount(userId: string) {
 }
 ```
 
+## Frequently Asked Questions
+
+### How do I edit my profile and immediately see the changes?
+
+Use `updateTag()` on the `self` scope for instant feedback on your own profile.
+
+```ts
+async function updateProfile(userId: string, data: ProfileData) {
+  await db.users.update({ where: { id: userId }, data });
+
+  // Self sees immediately (your own profile should update instantly)
+  cache.self.users.byId.updateTag({ id: userId });
+  // → updateTag('self/users/byId:user-123')
+}
+```
+
+**UX**: When you edit your display name, bio, or avatar, you see the changes immediately on your own profile page. No stale data, no waiting - instant feedback that your changes were saved.
+
+---
+
+### How do I edit my profile and only revalidate for others (SWR)?
+
+Use `revalidateTag()` on the `public` scope - others can tolerate brief staleness.
+
+```ts
+async function updateProfile(userId: string, data: ProfileData) {
+  const user = await db.users.update({ where: { id: userId }, data });
+
+  // Self sees immediately
+  cache.self.users.byId.updateTag({ id: userId });
+  // → updateTag('self/users/byId:user-123')
+
+  // Public sees via SWR (they can tolerate brief staleness)
+  cache.public.users.byId.revalidateTag({ id: userId });
+  // → revalidateTag('public/users/byId:user-123', 'max')
+
+  cache.public.users.byUsername.revalidateTag({ username: user.username });
+  // → revalidateTag('public/users/byUsername:johndoe', 'max')
+}
+```
+
+**UX**: You see your changes instantly. Others viewing your profile see the old version briefly, then it auto-updates in the background. They never see a loading spinner - just a smooth transition to your updated profile on their next visit.
+
+---
+
+### How do I handle username changes across all cached pages?
+
+Invalidate BOTH the old and new username cache entries.
+
+```ts
+async function changeUsername(userId: string, oldUsername: string, newUsername: string) {
+  await db.users.update({ where: { id: userId }, data: { username: newUsername } });
+
+  // Invalidate the old username (should return 404 now)
+  cache.public.users.byUsername.updateTag({ username: oldUsername });
+  // → updateTag('public/users/byUsername:old-name')
+
+  // Invalidate the new username (should resolve to this user now)
+  cache.public.users.byUsername.updateTag({ username: newUsername });
+  // → updateTag('public/users/byUsername:new-name')
+
+  // Also update the byId cache
+  cache.self.users.byId.updateTag({ id: userId });
+  // → updateTag('self/users/byId:user-123')
+  cache.public.users.byId.revalidateTag({ id: userId });
+  // → revalidateTag('public/users/byId:user-123', 'max')
+}
+```
+
+**UX**: Links to the old username (`/users/old-name`) immediately return 404 or redirect. Links to the new username (`/users/new-name`) immediately show the correct profile. No confusion about which username is valid.
+
+---
+
+### Should follower counts update immediately or use SWR?
+
+Use `revalidateTag()` for follower counts - exact numbers aren't critical.
+
+```ts
+async function followUser(currentUserId: string, targetUserId: string) {
+  await db.followers.create({
+    data: { followerId: currentUserId, followingId: targetUserId }
+  });
+
+  // Follower counts - SWR is fine (not critical if off by 1 briefly)
+  cache.public.users.followers.count.revalidateTag({ userId: targetUserId });
+  // → revalidateTag('public/users/followers/count:user-456', 'max')
+
+  cache.public.users.following.count.revalidateTag({ userId: currentUserId });
+  // → revalidateTag('public/users/following/count:user-123', 'max')
+
+  // The follower list for the target user
+  cache.public.users.followers.byUserId.revalidateTag({ userId: targetUserId });
+  // → revalidateTag('public/users/followers/byUserId:user-456', 'max')
+
+  // Your own following list should update immediately
+  cache.self.users.following.byUserId.updateTag({ userId: currentUserId });
+  // → updateTag('self/users/following/byUserId:user-123')
+}
+```
+
+**UX**: Follower counts like "1,234 followers" might lag by a few seconds - nobody notices if it says 1,234 vs 1,235. But YOUR following list updates immediately so you see that you're now following someone. The target user's follower count updates in the background.
+
+---
+
+### How do I ensure deleted accounts are removed from all caches?
+
+Use scope-less invalidation to clear across ALL scopes at once.
+
+```ts
+async function deleteAccount(userId: string) {
+  const user = await db.users.findUnique({ where: { id: userId } });
+  await db.users.delete({ where: { id: userId } });
+
+  // Invalidate across ALL scopes (self, public, admin) using scope-less access
+  cache.users.byId.revalidateTag({ id: userId });
+  // → revalidateTag('users/byId:user-123', 'max')
+  // This invalidates self/users/byId:user-123, public/users/byId:user-123, AND admin/users/byId:user-123
+
+  cache.users.byUsername.revalidateTag({ username: user.username });
+  // → revalidateTag('users/byUsername:johndoe', 'max')
+
+  // Also invalidate related data
+  cache.feed.byUserId.revalidateTag({ userId });
+  // → revalidateTag('feed/byUserId:user-123', 'max')
+
+  cache.notifications.byUserId.revalidateTag({ userId });
+  // → revalidateTag('notifications/byUserId:user-123', 'max')
+
+  // Global feed might have their content
+  cache.public.feed.global.revalidateTag();
+  // → revalidateTag('public/feed/global', 'max')
+}
+```
+
+**UX**: The deleted user's profile returns 404 everywhere immediately. Their content disappears from feeds. No cached references to the deleted account remain, satisfying GDPR requirements for data deletion.
+
+---
+
+### How do I separate private settings from public profile data?
+
+Use different cache entries with different scopes - `self` for private, `public` for public.
+
+```ts
+// Public profile - visible to everyone
+async function getPublicProfile(userId: string) {
+  'use cache: remote';
+  cache.public.users.byId.cacheTag({ id: userId });
+  // → cacheTag('public/users/byId:user-123', ...)
+  return db.users.findUnique({
+    where: { id: userId },
+    select: { id: true, username: true, displayName: true, bio: true, avatarUrl: true }
+  });
+}
+
+// Private settings - only visible to the user themselves
+async function getPrivateSettings(userId: string) {
+  'use cache: private';
+  cache.self.users.settings.byUserId.cacheTag({ userId });
+  // → cacheTag('self/users/settings/byUserId:user-123', ...)
+  return db.userSettings.findUnique({
+    where: { userId },
+    select: { email: true, phone: true, notificationPrefs: true, twoFactorEnabled: true }
+  });
+}
+
+// When updating settings, only invalidate the self scope
+async function updateSettings(userId: string, settings: SettingsData) {
+  await db.userSettings.update({ where: { userId }, data: settings });
+
+  cache.self.users.settings.byUserId.updateTag({ userId });
+  // → updateTag('self/users/settings/byUserId:user-123')
+  // Public profile is NOT affected
+}
+```
+
+**UX**: Private data (email, phone, 2FA settings) is cached separately under the `self` scope and never exposed to other users. Public profile data is cached under the `public` scope. The two never mix - updating settings doesn't affect public profile cache, and vice versa.
+
 ## Key Takeaways
 
 1. **Self scope for user's own data**: Users expect instant updates to their own profile

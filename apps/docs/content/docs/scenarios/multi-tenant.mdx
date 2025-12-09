@@ -502,6 +502,167 @@ const tenantCache = getTenantCache(currentTenant.id);
 tenantCache.projects.cacheTag();
 ```
 
+## Frequently Asked Questions
+
+### How do I update tenant settings and have all members see them immediately?
+
+Use `updateTag()` for tenant-admin scope (immediate) and `revalidateTag()` for member scope (SWR).
+
+```ts
+async function updateTenantSettings(tenantId: string, settings: Settings) {
+  await db.tenantSettings.update({ where: { tenantId }, data: settings });
+
+  // Tenant admin sees immediately
+  cache['tenant-admin'].tenants.settings.byTenantId.updateTag({ tenantId });
+  // → updateTag('tenant-admin/tenants/settings/byTenantId:tenant-123')
+
+  // Members get SWR (settings changes can tolerate brief staleness)
+  cache.member.tenants.settings.byTenantId.revalidateTag({ tenantId });
+  // → revalidateTag('member/tenants/settings/byTenantId:tenant-123', 'max')
+}
+```
+
+**UX**: The admin making the change sees it instantly. Other team members see the old settings briefly, then they auto-update in the background. This avoids loading spinners for regular members while giving admins immediate feedback.
+
+---
+
+### How do I ensure one tenant's data never leaks to another tenant's cache?
+
+Always include `tenantId` in your cache tags - the tag structure guarantees isolation.
+
+```ts
+// Caching tenant-specific data - ALWAYS include tenantId
+async function getTenantProjects(tenantId: string) {
+  'use cache: private';
+  cache.member.projects.byTenant.cacheTag({ tenantId });
+  // → cacheTag('member/projects/byTenant:tenant-123', ...)
+  return db.projects.findMany({ where: { tenantId } });
+}
+
+// Invalidation is also tenant-specific
+cache.member.projects.byTenant.revalidateTag({ tenantId: 'tenant-123' });
+// → revalidateTag('member/projects/byTenant:tenant-123', 'max')
+// This ONLY affects tenant-123, never tenant-456
+```
+
+**UX**: Complete data isolation is guaranteed by the cache tag structure. Tenant A's data is cached under `tenant-123` tags, Tenant B's under `tenant-456`. They can never overlap or leak because the tags are completely different strings.
+
+---
+
+### How do I invalidate all data for a tenant when they're suspended?
+
+Use branch-level invalidation to clear all tenant-scoped caches.
+
+```ts
+async function suspendTenant(tenantId: string) {
+  await db.tenants.update({ where: { id: tenantId }, data: { status: 'suspended' } });
+
+  // Invalidate everything for this tenant across all scopes
+  cache['tenant-admin'].tenants.byId.updateTag({ tenantId });
+  // → updateTag('tenant-admin/tenants/byId:tenant-123')
+
+  cache['tenant-admin'].projects.byTenant.updateTag({ tenantId });
+  // → updateTag('tenant-admin/projects/byTenant:tenant-123')
+
+  cache.member.projects.byTenant.updateTag({ tenantId });
+  // → updateTag('member/projects/byTenant:tenant-123')
+
+  // Update superadmin's view
+  cache.superadmin.tenants.list.revalidateTag();
+  // → revalidateTag('superadmin/tenants/list', 'max')
+}
+```
+
+**UX**: All pages for the suspended tenant immediately show the suspended state (or redirect to an error page). The superadmin's tenant list updates in the background to show the new status.
+
+---
+
+### How do I update a project and have team members see it immediately?
+
+Use `updateTag()` with both tenantId and project identifiers for immediate updates.
+
+```ts
+async function updateProject(tenantId: string, projectId: string, data: ProjectData) {
+  await db.projects.update({ where: { id: projectId }, data });
+
+  // Update the specific project (by tenant + slug for URL-based lookups)
+  cache.member.projects.byTenantAndSlug.updateTag({ tenantId, slug: data.slug });
+  // → updateTag('member/projects/byTenantAndSlug:tenant-123:project-slug')
+
+  // Update the project list for this tenant
+  cache.member.projects.byTenant.revalidateTag({ tenantId });
+  // → revalidateTag('member/projects/byTenant:tenant-123', 'max')
+
+  // Also update tenant-admin view
+  cache['tenant-admin'].projects.byTenant.updateTag({ tenantId });
+  // → updateTag('tenant-admin/projects/byTenant:tenant-123')
+}
+```
+
+**UX**: All team members see the updated project immediately on refresh. The project list in the sidebar updates in the background (SWR), avoiding disruptive loading states during navigation.
+
+---
+
+### How do I handle cross-tenant admin views efficiently?
+
+Use the `superadmin` scope with appropriate freshness - aggregate data can use SWR.
+
+```ts
+// Super admin viewing all tenants - can tolerate brief staleness
+async function getAllTenants() {
+  'use cache: remote';
+  cache.superadmin.tenants.list.cacheTag();
+  // → cacheTag('superadmin/tenants/list', 'superadmin/tenants', 'superadmin', 'tenants/list', 'tenants')
+  return db.tenants.findMany({ include: { _count: { select: { members: true } } } });
+}
+
+// When a tenant changes, revalidate the superadmin view
+cache.superadmin.tenants.list.revalidateTag();
+// → revalidateTag('superadmin/tenants/list', 'max')
+
+// For specific tenant details, superadmin can get fresh data
+cache.superadmin.tenants.byId.updateTag({ tenantId });
+// → updateTag('superadmin/tenants/byId:tenant-123')
+```
+
+**UX**: The superadmin dashboard shows slightly delayed aggregate data (total tenants, member counts), which is fine for overview screens. When drilling into a specific tenant, they get fresh data immediately.
+
+---
+
+### How do I cache audit logs without performance issues?
+
+Cache by tenant AND date for efficient, granular invalidation.
+
+```ts
+// Fetching audit logs - cache by date for efficiency
+async function getAuditLog(tenantId: string, date?: string) {
+  'use cache: private';
+  if (date) {
+    cache['tenant-admin'].audit.byTenantAndDate.cacheTag({ tenantId, date });
+    // → cacheTag('tenant-admin/audit/byTenantAndDate:tenant-123:2024-01-15', ...)
+  } else {
+    cache['tenant-admin'].audit.byTenant.cacheTag({ tenantId });
+    // → cacheTag('tenant-admin/audit/byTenant:tenant-123', ...)
+  }
+  return db.auditLog.findMany({ where: { tenantId, ...(date && { date }) } });
+}
+
+// When logging a new event, only invalidate today's cache
+async function logAuditEvent(tenantId: string, event: AuditEvent) {
+  await db.auditLog.create({ data: { tenantId, ...event } });
+
+  const today = new Date().toISOString().split('T')[0];
+  cache['tenant-admin'].audit.byTenantAndDate.revalidateTag({ tenantId, date: today });
+  // → revalidateTag('tenant-admin/audit/byTenantAndDate:tenant-123:2024-01-15', 'max')
+
+  // Also invalidate the general audit log view
+  cache['tenant-admin'].audit.byTenant.revalidateTag({ tenantId });
+  // → revalidateTag('tenant-admin/audit/byTenant:tenant-123', 'max')
+}
+```
+
+**UX**: Historical audit logs (yesterday, last week) load instantly from cache and never need invalidation. Only today's log refreshes when new events are added. This keeps the audit log performant even with millions of entries.
+
 ## Key Takeaways
 
 1. **Multi-param tags**: Use `tenantId` + resource ID patterns for isolation
