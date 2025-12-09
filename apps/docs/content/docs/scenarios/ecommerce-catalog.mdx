@@ -533,6 +533,163 @@ export async function deleteCategory(categoryId: string) {
 }
 ```
 
+## Frequently Asked Questions
+
+### How do I update a product price and have customers see it immediately?
+
+Use `updateTag()` for pricing - customers should never see stale prices.
+
+```ts
+async function updateProductPrice(productId: string, newPrice: number) {
+  await db.products.update({ where: { id: productId }, data: { price: newPrice } });
+
+  // Admin dashboard updates immediately
+  cache.admin.products.pricing.byId.updateTag({ productId });
+  // → updateTag('admin/products/pricing/byId:prod-123')
+
+  // Public product pages also update immediately (pricing is critical)
+  cache.public.products.pricing.byId.updateTag({ productId });
+  // → updateTag('public/products/pricing/byId:prod-123')
+
+  cache.public.products.byId.updateTag({ id: productId });
+  // → updateTag('public/products/byId:prod-123')
+}
+```
+
+**UX**: All customers see the correct price immediately. No one ever checks out with a stale price. This may cause a brief loading state, but pricing accuracy is more important than avoiding spinners.
+
+---
+
+### How do I update inventory and only revalidate (allow brief staleness)?
+
+Use `revalidateTag()` for inventory - a brief delay in "In Stock" status is acceptable.
+
+```ts
+async function updateInventory(productId: string, quantity: number) {
+  await db.inventory.update({ where: { productId }, data: { quantity } });
+
+  // Inventory display updates in the background
+  cache.public.products.inventory.byId.revalidateTag({ productId });
+  // → revalidateTag('public/products/inventory/byId:prod-123', 'max')
+}
+```
+
+**UX**: The "In Stock" badge might show stale data for a few seconds, but users never see a loading spinner when browsing products. The inventory refreshes in the background. This is acceptable because the actual checkout process should validate inventory in real-time anyway.
+
+---
+
+### How do I handle flash sales with aggressive cache invalidation?
+
+Use `updateTag()` at sale boundaries so prices switch exactly on time.
+
+```ts
+async function startFlashSale(saleId: string, productIds: string[]) {
+  await db.sales.update({ where: { id: saleId }, data: { active: true } });
+
+  // Invalidate all affected products immediately
+  for (const productId of productIds) {
+    cache.public.products.pricing.byId.updateTag({ productId });
+    // → updateTag('public/products/pricing/byId:prod-123')
+    cache.public.products.byId.updateTag({ id: productId });
+    // → updateTag('public/products/byId:prod-123')
+  }
+
+  // Invalidate the featured products section
+  cache.public.products.featured.updateTag();
+  // → updateTag('public/products/featured')
+}
+```
+
+**UX**: Sale prices appear exactly when the sale starts. No customer sees pre-sale prices after launch. The same approach works for ending sales - prices revert to normal immediately.
+
+---
+
+### How do I prevent showing out-of-stock items in product listings?
+
+Invalidate the product list caches when inventory hits zero.
+
+```ts
+async function updateInventory(productId: string, newQuantity: number) {
+  const oldInventory = await db.inventory.findUnique({ where: { productId } });
+  await db.inventory.update({ where: { productId }, data: { quantity: newQuantity } });
+
+  // Always update the specific product's inventory
+  cache.public.products.inventory.byId.revalidateTag({ productId });
+  // → revalidateTag('public/products/inventory/byId:prod-123', 'max')
+
+  // If transitioning to/from out-of-stock, update listings
+  const wasInStock = oldInventory.quantity > 0;
+  const isInStock = newQuantity > 0;
+
+  if (wasInStock !== isInStock) {
+    cache.public.products.list.revalidateTag();
+    // → revalidateTag('public/products/list', 'max')
+    cache.public.products.featured.revalidateTag();
+    // → revalidateTag('public/products/featured', 'max')
+
+    const product = await db.products.findUnique({ where: { id: productId } });
+    cache.public.products.byCategory.revalidateTag({ categoryId: product.categoryId });
+    // → revalidateTag('public/products/byCategory:electronics', 'max')
+  }
+}
+```
+
+**UX**: When an item goes out of stock, it disappears from browsing pages (listings, featured, category pages) after the background revalidation. Customers won't waste time clicking on unavailable products.
+
+---
+
+### How do I update the cart without affecting other users' carts?
+
+Use the `customer` scope with user/session IDs for complete isolation.
+
+```ts
+async function addToCart(userId: string, productId: string, quantity: number) {
+  await db.carts.addItem({ userId, productId, quantity });
+
+  // Only invalidate this specific user's cart
+  cache.customer.cart.byUserId.updateTag({ userId });
+  // → updateTag('customer/cart/byUserId:user-789')
+}
+
+// For anonymous users, use session ID
+async function addToCartAnonymous(sessionId: string, productId: string, quantity: number) {
+  await db.carts.addItem({ sessionId, productId, quantity });
+
+  cache.customer.cart.bySessionId.updateTag({ sessionId });
+  // → updateTag('customer/cart/bySessionId:sess-abc')
+}
+```
+
+**UX**: Each user's cart is completely isolated. Adding items to your cart never affects anyone else's cached cart data. The user sees their updated cart immediately.
+
+---
+
+### How do I invalidate all products in a category when reorganizing?
+
+Use branch-level invalidation to clear all products in a category at once.
+
+```ts
+async function reorganizeCategory(categoryId: string) {
+  // ... move products around ...
+
+  // Invalidate all products in this category (branch-level)
+  cache.public.products.byCategory.revalidateTag({ categoryId });
+  // → revalidateTag('public/products/byCategory:cat-123', 'max')
+
+  // Also invalidate the category tree structure
+  cache.public.categories.revalidateTag();
+  // → revalidateTag('public/categories', 'max')
+}
+
+// For nuclear option: invalidate ALL products across all categories
+async function rebuildEntireCatalog() {
+  cache.public.products.revalidateTag();
+  // → revalidateTag('public/products', 'max')
+}
+```
+
+**UX**: Category pages rebuild with the correct products after reorganization. Using branch-level invalidation (`products.byCategory` with a specific categoryId) is surgical - it only affects that category. The nuclear option (`products.revalidateTag()`) clears everything but should be used sparingly.
+
 ## Key Takeaways
 
 1. **Separate inventory from product data**: Cache them independently for different freshness

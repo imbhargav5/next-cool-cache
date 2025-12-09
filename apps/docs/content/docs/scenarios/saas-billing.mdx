@@ -412,6 +412,179 @@ async function getRecentInvoices() {
 }
 ```
 
+## Frequently Asked Questions
+
+### How do I update pricing and have the public page reflect it immediately?
+
+Use `updateTag()` on BOTH admin and public scopes - pricing must never be stale.
+
+```ts
+async function updatePlanPrice(planId: string, newPrice: number) {
+  await db.plans.update({ where: { id: planId }, data: { price: newPrice } });
+
+  // Admin sees immediately
+  cache.admin.pricing.plans.byId.updateTag({ planId });
+  // → updateTag('admin/pricing/plans/byId:plan-pro')
+
+  cache.admin.pricing.plans.list.updateTag();
+  // → updateTag('admin/pricing/plans/list')
+
+  // Public pricing page ALSO updates immediately (pricing is critical)
+  cache.public.pricing.plans.byId.updateTag({ planId });
+  // → updateTag('public/pricing/plans/byId:plan-pro')
+
+  cache.public.pricing.plans.list.updateTag();
+  // → updateTag('public/pricing/plans/list')
+}
+```
+
+**UX**: The pricing page shows correct prices immediately for everyone. A customer refreshing the page always sees accurate pricing. This may cause a brief loading state, but pricing accuracy is non-negotiable.
+
+---
+
+### How do I update a subscription status with stale-while-revalidate?
+
+Use `revalidateTag()` if the subscription status can tolerate brief staleness (rare cases only).
+
+```ts
+// Only use SWR for non-critical subscription data
+async function updateSubscriptionMetadata(orgId: string, metadata: object) {
+  await db.subscriptions.update({ where: { orgId }, data: { metadata } });
+
+  // Metadata can use SWR - it's not access-critical
+  cache.customer.subscriptions.byOrgId.revalidateTag({ orgId });
+  // → revalidateTag('customer/subscriptions/byOrgId:org-123', 'max')
+}
+```
+
+**UX**: The subscription metadata updates in the background. Users see stale metadata briefly, then it refreshes. This is ONLY appropriate for non-critical fields. For subscription status changes (active/canceled), always use `updateTag()` instead.
+
+---
+
+### When should subscription changes use updateTag vs revalidateTag?
+
+Use `updateTag()` for anything affecting feature access - users should never get "access denied" for features they paid for.
+
+```ts
+async function upgradePlan(orgId: string, newPlanId: string) {
+  await db.subscriptions.update({ where: { orgId }, data: { planId: newPlanId } });
+
+  // Subscription status - MUST be immediate (affects feature access)
+  cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+  // → updateTag('customer/subscriptions/byOrgId:org-123')
+
+  // Usage limits - MUST be immediate (affects what they can do)
+  cache.customer.limits.byOrgId.updateTag({ orgId });
+  // → updateTag('customer/limits/byOrgId:org-123')
+
+  // Upcoming invoice preview - can use SWR (informational only)
+  cache.customer.invoices.upcoming.revalidateTag({ orgId });
+  // → revalidateTag('customer/invoices/upcoming:org-123', 'max')
+}
+```
+
+**UX**: After upgrading, users immediately have access to new features with higher limits. They never see "upgrade required" errors for features they just paid for. The invoice preview updates in the background (less critical).
+
+---
+
+### How do I handle Stripe webhook delays with proper cache invalidation?
+
+Use `updateTag()` in webhook handlers for critical state changes.
+
+```ts
+// app/api/webhooks/stripe/route.ts
+async function handleStripeWebhook(event: Stripe.Event) {
+  switch (event.type) {
+    case 'customer.subscription.updated': {
+      const subscription = event.data.object;
+      const orgId = await getOrgIdFromStripeCustomer(subscription.customer);
+
+      // Subscription changed - immediate update (critical)
+      cache.customer.subscriptions.byOrgId.updateTag({ orgId });
+      // → updateTag('customer/subscriptions/byOrgId:org-123')
+
+      cache.customer.limits.byOrgId.updateTag({ orgId });
+      // → updateTag('customer/limits/byOrgId:org-123')
+
+      // Invoice preview changes
+      cache.customer.invoices.upcoming.revalidateTag({ orgId });
+      // → revalidateTag('customer/invoices/upcoming:org-123', 'max')
+      break;
+    }
+
+    case 'invoice.paid': {
+      const invoice = event.data.object;
+      const orgId = await getOrgIdFromStripeCustomer(invoice.customer);
+
+      // New invoice - update the list
+      cache.customer.invoices.byOrgId.revalidateTag({ orgId });
+      // → revalidateTag('customer/invoices/byOrgId:org-123', 'max')
+      break;
+    }
+  }
+}
+```
+
+**UX**: Even though Stripe webhooks may arrive seconds after the actual event, using `updateTag()` ensures the cache reflects the new state immediately when the webhook is processed. Users checking their subscription status see accurate information.
+
+---
+
+### How do I cache usage metrics that change frequently?
+
+Use `revalidateTag()` for current usage (acceptable staleness) and cache historical data longer.
+
+```ts
+// Current period usage - relatively fresh, but SWR is fine
+async function getCurrentUsage(orgId: string) {
+  'use cache: private';
+  cache.customer.usage.current.cacheTag({ orgId });
+  // → cacheTag('customer/usage/current:org-123', ...)
+  return db.usage.sum({ where: { orgId, period: getCurrentPeriod() } });
+}
+
+// Historical usage - can be cached indefinitely
+async function getUsageHistory(orgId: string, period: string) {
+  'use cache: private';
+  cache.customer.usage.byOrgAndPeriod.cacheTag({ orgId, period });
+  // → cacheTag('customer/usage/byOrgAndPeriod:org-123:2024-01', ...)
+  return db.usage.findMany({ where: { orgId, period } });
+}
+
+// When recording new usage
+async function recordUsage(orgId: string, amount: number) {
+  await db.usage.create({ data: { orgId, count: amount, period: getCurrentPeriod() } });
+
+  // Only invalidate current period (historical is immutable)
+  cache.customer.usage.current.revalidateTag({ orgId });
+  // → revalidateTag('customer/usage/current:org-123', 'max')
+}
+```
+
+**UX**: The usage dashboard shows reasonably fresh data (within seconds) without loading spinners. Historical months load instantly from cache. Current usage refreshes in the background as new events are recorded.
+
+---
+
+### How do I ensure invoice data is only visible to the right customer?
+
+Use the `customer` scope with `orgId` - invoice data is never shared across organizations.
+
+```ts
+// Fetching invoices - always scoped to the customer's org
+async function getInvoices(orgId: string) {
+  'use cache: private';
+  cache.customer.invoices.byOrgId.cacheTag({ orgId });
+  // → cacheTag('customer/invoices/byOrgId:org-123', 'customer/invoices', 'customer', 'invoices/byOrgId:org-123', 'invoices')
+  return db.invoices.findMany({ where: { orgId } });
+}
+
+// Invalidation is also org-specific
+cache.customer.invoices.byOrgId.revalidateTag({ orgId: 'org-123' });
+// → revalidateTag('customer/invoices/byOrgId:org-123', 'max')
+// This ONLY affects org-123's invoice cache
+```
+
+**UX**: Each customer only ever sees their own invoices. The cache tags include the orgId, so `org-123`'s invoices are completely separate from `org-456`'s. There's no risk of cross-customer invoice leakage.
+
 ## Key Takeaways
 
 1. **Pricing should update instantly**: Public pricing pages need immediate updates when prices change
