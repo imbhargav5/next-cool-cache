@@ -1,5 +1,11 @@
 # next-cool-cache
 
+## 0.1.1
+
+### Patch Changes
+
+- [#19](https://github.com/imbhargav5/next-cool-cache/pull/19) [`ea635b8`](https://github.com/imbhargav5/next-cool-cache/commit/ea635b860421f116a64e7a3c7b7bc4219338d1e5) Thanks [@imbhargav5](https://github.com/imbhargav5)! - remove sourcemaps in npm build
+
 ## 0.1.0
 
 ### Minor Changes
