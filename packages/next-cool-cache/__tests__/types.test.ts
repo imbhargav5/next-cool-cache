@@ -3,15 +3,19 @@
  *
  * These tests use the Expect + Equal pattern to verify type behavior at compile time.
  * If any type assertion is wrong, TypeScript will fail to compile this file.
+ *
+ * @note We intentionally use {} to test schema leaf nodes - this matches the actual
+ * schema format used in the library where {} represents an empty leaf node.
  */
 
+/* biome-ignore-all lint/complexity/noBannedTypes: {} is intentionally used to test schema leaf nodes */
+
 import type {
-  IsLeaf,
-  ExtractParams,
   AccumulatedParams,
-  ParamsArray,
-  LeafNode,
   BranchNode,
+  ExtractParams,
+  IsLeaf,
+  LeafNode,
 } from "../src/types.js";
 
 // ============================================
@@ -26,11 +30,10 @@ type Expect<T extends true> = T;
 /**
  * Equal<X, Y> - returns `true` if X and Y are exactly equal types
  */
-type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y
-  ? 1
-  : 2
-  ? true
-  : false;
+type Equal<X, Y> =
+  (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2
+    ? true
+    : false;
 
 // ============================================
 // IsLeaf TESTS
@@ -59,7 +62,10 @@ type _TestIsLeaf_ParamsAndChildren = Expect<
 
 // Branch with _params and multiple children is NOT a leaf
 type _TestIsLeaf_ParamsAndMultipleChildren = Expect<
-  Equal<IsLeaf<{ _params: readonly ["userId"]; profile: {}; settings: {} }>, false>
+  Equal<
+    IsLeaf<{ _params: readonly ["userId"]; profile: {}; settings: {} }>,
+    false
+  >
 >;
 
 // ============================================
@@ -67,13 +73,14 @@ type _TestIsLeaf_ParamsAndMultipleChildren = Expect<
 // ============================================
 
 // Empty object has no params
-type _TestExtractParams_Empty = Expect<
-  Equal<ExtractParams<{}>, readonly []>
->;
+type _TestExtractParams_Empty = Expect<Equal<ExtractParams<{}>, readonly []>>;
 
 // Object with _params extracts them
 type _TestExtractParams_WithParams = Expect<
-  Equal<ExtractParams<{ _params: readonly ["id", "name"] }>, readonly ["id", "name"]>
+  Equal<
+    ExtractParams<{ _params: readonly ["id", "name"] }>,
+    readonly ["id", "name"]
+  >
 >;
 
 // Object without _params returns empty
@@ -83,7 +90,10 @@ type _TestExtractParams_NoParams = Expect<
 
 // Branch with _params extracts them
 type _TestExtractParams_BranchWithParams = Expect<
-  Equal<ExtractParams<{ _params: readonly ["userId"]; profile: {} }>, readonly ["userId"]>
+  Equal<
+    ExtractParams<{ _params: readonly ["userId"]; profile: {} }>,
+    readonly ["userId"]
+  >
 >;
 
 // ============================================
@@ -102,7 +112,10 @@ type _TestAccumulatedParams_InheritedOnly = Expect<
 
 // Current only
 type _TestAccumulatedParams_CurrentOnly = Expect<
-  Equal<AccumulatedParams<{ _params: readonly ["userId"] }, readonly []>, readonly ["userId"]>
+  Equal<
+    AccumulatedParams<{ _params: readonly ["userId"] }, readonly []>,
+    readonly ["userId"]
+  >
 >;
 
 // Both inherited and current
@@ -116,7 +129,10 @@ type _TestAccumulatedParams_Both = Expect<
 // Multiple levels accumulated
 type _TestAccumulatedParams_MultiLevel = Expect<
   Equal<
-    AccumulatedParams<{ _params: readonly ["workspaceId"] }, readonly ["tenantId", "userId"]>,
+    AccumulatedParams<
+      { _params: readonly ["workspaceId"] },
+      readonly ["tenantId", "userId"]
+    >,
     readonly ["tenantId", "userId", "workspaceId"]
   >
 >;
@@ -131,9 +147,9 @@ type _TestLeafNode_NoParams = Expect<
 >;
 
 // LeafNode with params requires params object
-type _TestLeafNode_WithParams = LeafNode<readonly ["id"]>["cacheTag"] extends (
-  params: { id: string }
-) => void
+type _TestLeafNode_WithParams = LeafNode<
+  readonly ["id"]
+>["cacheTag"] extends (params: { id: string }) => void
   ? true
   : false;
 type _TestLeafNode_WithParamsCheck = Expect<_TestLeafNode_WithParams>;
