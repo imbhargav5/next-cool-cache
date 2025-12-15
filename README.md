@@ -380,6 +380,113 @@ pnpm test
 pnpm check-types
 ```
 
+## What's New in v0.2.0
+
+### Hierarchical Params (Branch-Level `_params`)
+
+You can now define `_params` at any level in the schema tree, not just at leaf nodes. This enables powerful patterns like user-scoped caches where all resources under a user inherit the `userId` param.
+
+```typescript
+const schema = {
+  userPrivateData: {
+    _params: ['userId'] as const,  // Branch-level params!
+    myWorkspaces: {
+      list: {},
+      byId: { _params: ['workspaceId'] as const },
+    },
+    myProfile: {
+      detail: {},
+    },
+  },
+} as const;
+
+const cache = createCache(schema, ['admin', 'user'] as const);
+```
+
+#### Key Behaviors
+
+**`cacheTag` requires ALL accumulated params:**
+
+```typescript
+// Requires userId (from branch) + workspaceId (from leaf)
+cache.admin.userPrivateData.myWorkspaces.byId.cacheTag({
+  userId: 'u1',
+  workspaceId: 'w1'
+});
+// Tag: 'admin/userPrivateData:u1/myWorkspaces/byId:w1'
+
+// Leaf without own params still requires branch params
+cache.admin.userPrivateData.myProfile.detail.cacheTag({ userId: 'u1' });
+// Tag: 'admin/userPrivateData:u1/myProfile/detail'
+```
+
+**`revalidateTag` and `updateTag` accept OPTIONAL params for flexible invalidation:**
+
+```typescript
+// Specific: invalidate workspace w1 for user u1
+cache.admin.userPrivateData.myWorkspaces.byId.revalidateTag({
+  userId: 'u1',
+  workspaceId: 'w1'
+});
+// Tag: 'admin/userPrivateData:u1/myWorkspaces/byId:w1'
+
+// Broader: invalidate ALL workspaces for user u1
+cache.admin.userPrivateData.myWorkspaces.byId.revalidateTag({ userId: 'u1' });
+// Tag: 'admin/userPrivateData:u1/myWorkspaces/byId'
+
+// Cross-dimensional: invalidate workspace w1 across ALL users
+cache.admin.userPrivateData.myWorkspaces.byId.revalidateTag({ workspaceId: 'w1' });
+// Tag: 'admin/userPrivateData/myWorkspaces/byId:w1'
+
+// Broadest: invalidate entire subtree
+cache.admin.userPrivateData.myWorkspaces.byId.revalidateTag();
+// Tag: 'admin/userPrivateData/myWorkspaces/byId'
+```
+
+#### Tag Format: Embedded Params
+
+Params are embedded at their respective path segments (not appended at the end):
+
+```
+userPrivateData:u1/myWorkspaces/byId:w1
+^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^
+userId at level 0  workspaceId at level 2
+```
+
+This enables precise invalidation at any dimension of your cache hierarchy.
+
+#### Multi-Level Params
+
+You can have params at multiple branch levels:
+
+```typescript
+const schema = {
+  tenant: {
+    _params: ['tenantId'] as const,
+    users: {
+      _params: ['userId'] as const,
+      profile: {},
+      workspaces: {
+        list: {},
+        byId: { _params: ['workspaceId'] as const },
+      },
+    },
+  },
+} as const;
+
+// Requires all 3 params
+cache.admin.tenant.users.workspaces.byId.cacheTag({
+  tenantId: 't1',
+  userId: 'u1',
+  workspaceId: 'w1'
+});
+// Tag: 'admin/tenant:t1/users:u1/workspaces/byId:w1'
+```
+
+#### Backward Compatibility
+
+Existing schemas with params only at leaf nodes continue to work unchanged.
+
 ## Requirements
 
 - Next.js 16.0.0 or higher

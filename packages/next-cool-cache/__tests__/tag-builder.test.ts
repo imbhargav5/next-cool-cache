@@ -1,9 +1,13 @@
 import {
   buildAllTags,
+  buildAllTagsWithEmbeddedParams,
   buildAncestorTags,
+  buildAncestorTagsWithEmbeddedParams,
   buildScopedTag,
   buildTag,
+  buildTagWithEmbeddedParams,
   buildUnscopedTags,
+  buildUnscopedTagsWithEmbeddedParams,
 } from "../src/tag-builder";
 
 describe("tag-builder", () => {
@@ -417,6 +421,570 @@ describe("tag-builder", () => {
     it("handles very long scope name", () => {
       const longScope = "very-long-scope-name-for-testing-purposes";
       expect(buildScopedTag(longScope, "users")).toBe(`${longScope}/users`);
+    });
+  });
+
+  // ============================================
+  // EMBEDDED PARAMS TESTS (Hierarchical params feature)
+  // ============================================
+
+  describe("buildTagWithEmbeddedParams", () => {
+    it("builds tag with params embedded at branch level", () => {
+      // userPrivateData has userId param, byWorkspaceId has workspaceId param
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(
+          ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+          paramsBySegment,
+          { userId: "u1", workspaceId: "w1" }
+        )
+      ).toBe("userPrivateData:u1/myWorkspaces/byWorkspaceId:w1");
+    });
+
+    it("builds tag with partial params (userId only)", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(
+          ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+          paramsBySegment,
+          { userId: "u1" }
+        )
+      ).toBe("userPrivateData:u1/myWorkspaces/byWorkspaceId");
+    });
+
+    it("builds tag with partial params (workspaceId only)", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(
+          ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+          paramsBySegment,
+          { workspaceId: "w1" }
+        )
+      ).toBe("userPrivateData/myWorkspaces/byWorkspaceId:w1");
+    });
+
+    it("builds tag with no params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(
+          ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+          paramsBySegment,
+          {}
+        )
+      ).toBe("userPrivateData/myWorkspaces/byWorkspaceId");
+    });
+
+    it("builds tag with multiple params at same segment", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["tenantId", "orgId"]],
+        [1, ["userId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(["tenant", "users"], paramsBySegment, {
+          tenantId: "t1",
+          orgId: "o1",
+          userId: "u1",
+        })
+      ).toBe("tenant:t1:o1/users:u1");
+    });
+
+    it("handles path with no params defined", () => {
+      expect(buildTagWithEmbeddedParams(["users", "list"], new Map(), {})).toBe(
+        "users/list"
+      );
+    });
+
+    it("handles multi-level branch params", () => {
+      // tenant -> users -> workspaces -> byId
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["tenantId"]],
+        [1, ["userId"]],
+        [3, ["workspaceId"]],
+      ]);
+
+      expect(
+        buildTagWithEmbeddedParams(
+          ["tenant", "users", "workspaces", "byId"],
+          paramsBySegment,
+          { tenantId: "t1", userId: "u1", workspaceId: "w1" }
+        )
+      ).toBe("tenant:t1/users:u1/workspaces/byId:w1");
+    });
+  });
+
+  describe("buildAncestorTagsWithEmbeddedParams", () => {
+    it("builds ancestor tags with embedded params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      const ancestors = buildAncestorTagsWithEmbeddedParams(
+        ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+        paramsBySegment,
+        { userId: "u1", workspaceId: "w1" }
+      );
+
+      expect(ancestors).toEqual([
+        "userPrivateData:u1",
+        "userPrivateData:u1/myWorkspaces",
+      ]);
+    });
+
+    it("builds ancestor tags with partial params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      const ancestors = buildAncestorTagsWithEmbeddedParams(
+        ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+        paramsBySegment,
+        { userId: "u1" }
+      );
+
+      expect(ancestors).toEqual([
+        "userPrivateData:u1",
+        "userPrivateData:u1/myWorkspaces",
+      ]);
+    });
+
+    it("returns empty array for single segment path", () => {
+      expect(
+        buildAncestorTagsWithEmbeddedParams(
+          ["users"],
+          new Map([[0, ["userId"]]]),
+          { userId: "u1" }
+        )
+      ).toEqual([]);
+    });
+  });
+
+  describe("buildAllTagsWithEmbeddedParams", () => {
+    it("builds all hierarchical tags with embedded params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      const tags = buildAllTagsWithEmbeddedParams(
+        ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+        ["admin"],
+        paramsBySegment,
+        { userId: "u1", workspaceId: "w1" }
+      );
+
+      expect(tags).toEqual([
+        // Scoped tags
+        "admin/userPrivateData:u1/myWorkspaces/byWorkspaceId:w1",
+        "admin/userPrivateData:u1/myWorkspaces",
+        "admin/userPrivateData:u1",
+        "admin",
+        // Unscoped tags
+        "userPrivateData:u1/myWorkspaces/byWorkspaceId:w1",
+        "userPrivateData:u1/myWorkspaces",
+        "userPrivateData:u1",
+      ]);
+    });
+
+    it("builds tags for leaf without params under parameterized branch", () => {
+      const paramsBySegment = new Map<number, string[]>([[0, ["userId"]]]);
+
+      const tags = buildAllTagsWithEmbeddedParams(
+        ["userPrivateData", "myProfile", "detail"],
+        ["admin"],
+        paramsBySegment,
+        { userId: "u1" }
+      );
+
+      expect(tags).toEqual([
+        "admin/userPrivateData:u1/myProfile/detail",
+        "admin/userPrivateData:u1/myProfile",
+        "admin/userPrivateData:u1",
+        "admin",
+        "userPrivateData:u1/myProfile/detail",
+        "userPrivateData:u1/myProfile",
+        "userPrivateData:u1",
+      ]);
+    });
+  });
+
+  describe("buildUnscopedTagsWithEmbeddedParams", () => {
+    it("builds unscoped tags with embedded params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      const tags = buildUnscopedTagsWithEmbeddedParams(
+        ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+        paramsBySegment,
+        { userId: "u1", workspaceId: "w1" }
+      );
+
+      expect(tags).toEqual([
+        "userPrivateData:u1/myWorkspaces/byWorkspaceId:w1",
+        "userPrivateData:u1/myWorkspaces",
+        "userPrivateData:u1",
+      ]);
+    });
+
+    it("builds unscoped tags with partial params", () => {
+      const paramsBySegment = new Map<number, string[]>([
+        [0, ["userId"]],
+        [2, ["workspaceId"]],
+      ]);
+
+      const tags = buildUnscopedTagsWithEmbeddedParams(
+        ["userPrivateData", "myWorkspaces", "byWorkspaceId"],
+        paramsBySegment,
+        { userId: "u1" }
+      );
+
+      expect(tags).toEqual([
+        "userPrivateData:u1/myWorkspaces/byWorkspaceId",
+        "userPrivateData:u1/myWorkspaces",
+        "userPrivateData:u1",
+      ]);
+    });
+  });
+
+  // ============================================
+  // ADDITIONAL EMBEDDED PARAMS EDGE CASE TESTS
+  // ============================================
+
+  describe("embedded params edge cases", () => {
+    describe("deeply nested params (4+ levels)", () => {
+      it("handles 4-level deep params", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["orgId"]],
+          [1, ["teamId"]],
+          [2, ["projectId"]],
+          [3, ["taskId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["org", "team", "project", "task"],
+            paramsBySegment,
+            { orgId: "o1", teamId: "t1", projectId: "p1", taskId: "tk1" }
+          )
+        ).toBe("org:o1/team:t1/project:p1/task:tk1");
+      });
+
+      it("handles 4-level with only first and last params", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["orgId"]],
+          [3, ["taskId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["org", "team", "project", "task"],
+            paramsBySegment,
+            { orgId: "o1", taskId: "tk1" }
+          )
+        ).toBe("org:o1/team/project/task:tk1");
+      });
+
+      it("handles 4-level with middle params only", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [1, ["teamId"]],
+          [2, ["projectId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["org", "team", "project", "task"],
+            paramsBySegment,
+            { teamId: "t1", projectId: "p1" }
+          )
+        ).toBe("org/team:t1/project:p1/task");
+      });
+    });
+
+    describe("special characters in param values", () => {
+      it("handles colons in param values", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["timestamp"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(["events", "byTime"], paramsBySegment, {
+            timestamp: "2024:01:15:10:30:00",
+          })
+        ).toBe("events:2024:01:15:10:30:00/byTime");
+      });
+
+      it("handles slashes in param values", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["path"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(["files", "content"], paramsBySegment, {
+            path: "home/user/docs",
+          })
+        ).toBe("files:home/user/docs/content");
+      });
+
+      it("handles special characters in param values", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["email"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(["users", "profile"], paramsBySegment, {
+            email: "user+test@example.com",
+          })
+        ).toBe("users:user+test@example.com/profile");
+      });
+
+      it("handles unicode in param values", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["name"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(["users", "profile"], paramsBySegment, {
+            name: "日本語ユーザー",
+          })
+        ).toBe("users:日本語ユーザー/profile");
+      });
+
+      it("handles empty string param values", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["query"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(["search", "results"], paramsBySegment, {
+            query: "",
+          })
+        ).toBe("search:/results");
+      });
+    });
+
+    describe("gaps in param levels", () => {
+      it("handles params with gaps between levels", () => {
+        // Params at level 0 and 3, but not 1 and 2
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId"]],
+          [3, ["itemId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["tenant", "category", "subcategory", "item"],
+            paramsBySegment,
+            { tenantId: "t1", itemId: "i1" }
+          )
+        ).toBe("tenant:t1/category/subcategory/item:i1");
+      });
+
+      it("handles single param in middle of path", () => {
+        const paramsBySegment = new Map<number, string[]>([[2, ["projectId"]]]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["org", "team", "project", "task", "subtask"],
+            paramsBySegment,
+            { projectId: "p1" }
+          )
+        ).toBe("org/team/project:p1/task/subtask");
+      });
+    });
+
+    describe("multiple params at single segment", () => {
+      it("handles 3 params at same segment", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId", "regionId", "zoneId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(["location", "data"], paramsBySegment, {
+            tenantId: "t1",
+            regionId: "r1",
+            zoneId: "z1",
+          })
+        ).toBe("location:t1:r1:z1/data");
+      });
+
+      it("handles partial multi-params at same segment", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId", "regionId", "zoneId"]],
+        ]);
+
+        // Only provide 2 of 3 params
+        expect(
+          buildTagWithEmbeddedParams(["location", "data"], paramsBySegment, {
+            tenantId: "t1",
+            zoneId: "z1",
+          })
+        ).toBe("location:t1:z1/data");
+      });
+
+      it("handles multi-params at multiple segments", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["orgId", "tenantId"]],
+          [2, ["userId", "roleId"]],
+        ]);
+
+        expect(
+          buildTagWithEmbeddedParams(
+            ["org", "department", "user"],
+            paramsBySegment,
+            { orgId: "o1", tenantId: "t1", userId: "u1", roleId: "r1" }
+          )
+        ).toBe("org:o1:t1/department/user:u1:r1");
+      });
+    });
+
+    describe("ancestor tags with complex params", () => {
+      it("builds ancestors for 5-level path with alternating params", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["a"]],
+          [2, ["c"]],
+          [4, ["e"]],
+        ]);
+
+        const ancestors = buildAncestorTagsWithEmbeddedParams(
+          ["l0", "l1", "l2", "l3", "l4"],
+          paramsBySegment,
+          { a: "1", c: "3", e: "5" }
+        );
+
+        expect(ancestors).toEqual([
+          "l0:1",
+          "l0:1/l1",
+          "l0:1/l1/l2:3",
+          "l0:1/l1/l2:3/l3",
+        ]);
+      });
+
+      it("builds ancestors with partial params in middle", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["userId"]],
+          [1, ["workspaceId"]],
+          [2, ["projectId"]],
+        ]);
+
+        // Only provide userId
+        const ancestors = buildAncestorTagsWithEmbeddedParams(
+          ["user", "workspace", "project"],
+          paramsBySegment,
+          { userId: "u1" }
+        );
+
+        expect(ancestors).toEqual(["user:u1", "user:u1/workspace"]);
+      });
+    });
+
+    describe("buildAllTagsWithEmbeddedParams comprehensive", () => {
+      it("handles 3-level params with different scopes", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId"]],
+          [1, ["userId"]],
+          [2, ["docId"]],
+        ]);
+
+        const tags = buildAllTagsWithEmbeddedParams(
+          ["tenant", "user", "doc"],
+          ["admin"],
+          paramsBySegment,
+          { tenantId: "t1", userId: "u1", docId: "d1" }
+        );
+
+        expect(tags).toEqual([
+          // Scoped
+          "admin/tenant:t1/user:u1/doc:d1",
+          "admin/tenant:t1/user:u1",
+          "admin/tenant:t1",
+          "admin",
+          // Unscoped
+          "tenant:t1/user:u1/doc:d1",
+          "tenant:t1/user:u1",
+          "tenant:t1",
+        ]);
+      });
+
+      it("handles partial params with 3-level hierarchy", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId"]],
+          [1, ["userId"]],
+          [2, ["docId"]],
+        ]);
+
+        // Only tenantId provided
+        const tags = buildAllTagsWithEmbeddedParams(
+          ["tenant", "user", "doc"],
+          ["admin"],
+          paramsBySegment,
+          { tenantId: "t1" }
+        );
+
+        expect(tags).toEqual([
+          "admin/tenant:t1/user/doc",
+          "admin/tenant:t1/user",
+          "admin/tenant:t1",
+          "admin",
+          "tenant:t1/user/doc",
+          "tenant:t1/user",
+          "tenant:t1",
+        ]);
+      });
+
+      it("handles no params provided with parameterized schema", () => {
+        const paramsBySegment = new Map<number, string[]>([
+          [0, ["tenantId"]],
+          [1, ["userId"]],
+        ]);
+
+        const tags = buildAllTagsWithEmbeddedParams(
+          ["tenant", "user", "profile"],
+          ["admin"],
+          paramsBySegment,
+          {}
+        );
+
+        expect(tags).toEqual([
+          "admin/tenant/user/profile",
+          "admin/tenant/user",
+          "admin/tenant",
+          "admin",
+          "tenant/user/profile",
+          "tenant/user",
+          "tenant",
+        ]);
+      });
+
+      it("handles multiple scopes correctly", () => {
+        const paramsBySegment = new Map<number, string[]>([[0, ["userId"]]]);
+
+        const adminTags = buildAllTagsWithEmbeddedParams(
+          ["user", "data"],
+          ["admin"],
+          paramsBySegment,
+          { userId: "u1" }
+        );
+
+        const publicTags = buildAllTagsWithEmbeddedParams(
+          ["user", "data"],
+          ["public"],
+          paramsBySegment,
+          { userId: "u1" }
+        );
+
+        expect(adminTags[0]).toBe("admin/user:u1/data");
+        expect(publicTags[0]).toBe("public/user:u1/data");
+      });
     });
   });
 });

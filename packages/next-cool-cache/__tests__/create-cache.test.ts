@@ -4,6 +4,10 @@ import {
   ecommerceScopes,
   edgeCaseSchema,
   extremelyNestedSchema,
+  hierarchicalParamsSchema,
+  hierarchicalParamsScopes,
+  multiLevelParamsSchema,
+  multiLevelParamsScopes,
   multiParamSchema,
   nestedSchema,
   nestedScopes,
@@ -1502,6 +1506,786 @@ describe("createCache", () => {
         cache.dashboard.revalidateTag();
 
         expect(mockRevalidateTag).toHaveBeenCalledWith("dashboard", "max");
+      });
+    });
+  });
+
+  // ============================================
+  // HIERARCHICAL PARAMS TESTS
+  // ============================================
+
+  describe("with hierarchical params schema", () => {
+    const createTestCache = () =>
+      createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+    describe("leaf node with accumulated params from branch", () => {
+      it("cacheTag requires ALL accumulated params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.cacheTag({
+          userId: "u1",
+          workspaceId: "w1",
+        });
+
+        expect(mockCacheTag).toHaveBeenCalledTimes(1);
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1",
+          "admin/userPrivateData:u1/myWorkspaces/slim",
+          "admin/userPrivateData:u1/myWorkspaces",
+          "admin/userPrivateData:u1",
+          "admin",
+          "userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1",
+          "userPrivateData:u1/myWorkspaces/slim",
+          "userPrivateData:u1/myWorkspaces",
+          "userPrivateData:u1"
+        );
+      });
+
+      it("revalidateTag with ALL params invalidates specific resource", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {
+            userId: "u1",
+            workspaceId: "w1",
+          }
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1",
+          "max"
+        );
+      });
+
+      it("revalidateTag with userId only invalidates all workspaces for user", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {
+            userId: "u1",
+          }
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId",
+          "max"
+        );
+      });
+
+      it("revalidateTag with workspaceId only invalidates workspace across all users", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {
+            workspaceId: "w1",
+          }
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces/slim/byWorkspaceId:w1",
+          "max"
+        );
+      });
+
+      it("revalidateTag with no params invalidates entire subtree", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {}
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces/slim/byWorkspaceId",
+          "max"
+        );
+      });
+
+      it("updateTag with partial params works the same way", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.updateTag({
+          userId: "u1",
+        });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId"
+        );
+      });
+    });
+
+    describe("leaf without own params under parameterized branch", () => {
+      it("cacheTag requires branch params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myProfile.detail.cacheTag({ userId: "u1" });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myProfile/detail",
+          "admin/userPrivateData:u1/myProfile",
+          "admin/userPrivateData:u1",
+          "admin",
+          "userPrivateData:u1/myProfile/detail",
+          "userPrivateData:u1/myProfile",
+          "userPrivateData:u1"
+        );
+      });
+
+      it("revalidateTag with userId invalidates specific user profile", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myProfile.detail.revalidateTag({
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myProfile/detail",
+          "max"
+        );
+      });
+
+      it("revalidateTag without params invalidates all user profiles", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myProfile.detail.revalidateTag({});
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myProfile/detail",
+          "max"
+        );
+      });
+    });
+
+    describe("branch node with params", () => {
+      it("revalidateTag with userId invalidates all of user's private data", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.revalidateTag({ userId: "u1" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1",
+          "max"
+        );
+      });
+
+      it("revalidateTag without params invalidates all private data", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.revalidateTag({});
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData",
+          "max"
+        );
+      });
+
+      it("updateTag with userId updates specific user's data", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.updateTag({ userId: "u1" });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith("admin/userPrivateData:u1");
+      });
+
+      it("intermediate branch inherits parent params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.revalidateTag({
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces",
+          "max"
+        );
+      });
+    });
+
+    describe("cross-scope operations with params", () => {
+      it("unscoped leaf revalidateTag with all params", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag({
+          userId: "u1",
+          workspaceId: "w1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1",
+          "max"
+        );
+      });
+
+      it("unscoped branch revalidateTag with params", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.revalidateTag({ userId: "u1" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "userPrivateData:u1",
+          "max"
+        );
+      });
+
+      it("unscoped cacheTag with all params", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.myProfile.detail.cacheTag({ userId: "u1" });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "userPrivateData:u1/myProfile/detail",
+          "userPrivateData:u1/myProfile",
+          "userPrivateData:u1"
+        );
+      });
+    });
+  });
+
+  describe("with multi-level params schema", () => {
+    const createTestCache = () =>
+      createCache(multiLevelParamsSchema, multiLevelParamsScopes);
+
+    describe("triple-level params accumulation", () => {
+      it("cacheTag requires all three level params", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.byId.cacheTag({
+          tenantId: "t1",
+          userId: "u1",
+          workspaceId: "w1",
+        });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users:u1/workspaces/byId:w1",
+          "admin/tenant:t1/users:u1/workspaces",
+          "admin/tenant:t1/users:u1",
+          "admin/tenant:t1",
+          "admin",
+          "tenant:t1/users:u1/workspaces/byId:w1",
+          "tenant:t1/users:u1/workspaces",
+          "tenant:t1/users:u1",
+          "tenant:t1"
+        );
+      });
+
+      it("revalidateTag with tenantId only", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users/workspaces/byId",
+          "max"
+        );
+      });
+
+      it("revalidateTag with tenantId and userId", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users:u1/workspaces/byId",
+          "max"
+        );
+      });
+
+      it("revalidateTag with userId only (skip tenant)", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant/users:u1/workspaces/byId",
+          "max"
+        );
+      });
+
+      it("revalidateTag with workspaceId only", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          workspaceId: "w1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant/users/workspaces/byId:w1",
+          "max"
+        );
+      });
+    });
+
+    describe("leaf without own params at deep level", () => {
+      it("profile inherits tenant and user params", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.profile.cacheTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users:u1/profile",
+          "admin/tenant:t1/users:u1",
+          "admin/tenant:t1",
+          "admin",
+          "tenant:t1/users:u1/profile",
+          "tenant:t1/users:u1",
+          "tenant:t1"
+        );
+      });
+
+      it("config inherits only tenant params", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.config.cacheTag({ tenantId: "t1" });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/config",
+          "admin/tenant:t1",
+          "admin",
+          "tenant:t1/config",
+          "tenant:t1"
+        );
+      });
+    });
+
+    describe("branch invalidation at different levels", () => {
+      it("tenant branch with tenantId", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.revalidateTag({ tenantId: "t1" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant:t1",
+          "max"
+        );
+      });
+
+      it("users branch with tenantId and userId", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users:u1",
+          "max"
+        );
+      });
+
+      it("workspaces branch with all ancestor params", () => {
+        const cache = createTestCache();
+        cache.admin.tenant.users.workspaces.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/tenant:t1/users:u1/workspaces",
+          "max"
+        );
+      });
+    });
+  });
+
+  // ============================================
+  // ADDITIONAL HIERARCHICAL PARAMS EDGE CASE TESTS
+  // ============================================
+
+  describe("hierarchical params edge cases", () => {
+    describe("backward compatibility with leaf-only params", () => {
+      const createTestCache = () => createCache(simpleSchema, simpleScopes);
+
+      it("existing schemas without branch params still work", () => {
+        const cache = createTestCache();
+        cache.admin.users.byId.cacheTag({ id: "123" });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/users/byId:123",
+          "admin/users",
+          "admin",
+          "users/byId:123",
+          "users"
+        );
+      });
+
+      it("existing revalidateTag still works with required params", () => {
+        const cache = createTestCache();
+        cache.admin.users.byId.revalidateTag({ id: "123" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/users/byId:123",
+          "max"
+        );
+      });
+
+      it("existing updateTag still works", () => {
+        const cache = createTestCache();
+        cache.admin.users.byId.updateTag({ id: "123" });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith("admin/users/byId:123");
+      });
+    });
+
+    describe("flexible invalidation patterns with hierarchical params", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("can invalidate all resources for a user", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.revalidateTag({ userId: "user-123" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:user-123",
+          "max"
+        );
+      });
+
+      it("can invalidate all users data", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.revalidateTag({});
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData",
+          "max"
+        );
+      });
+
+      it("can invalidate specific workspace for specific user", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {
+            userId: "user-123",
+            workspaceId: "ws-456",
+          }
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:user-123/myWorkspaces/slim/byWorkspaceId:ws-456",
+          "max"
+        );
+      });
+
+      it("can invalidate all workspaces for all users", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.revalidateTag({});
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces",
+          "max"
+        );
+      });
+
+      it("can invalidate all workspaces for a specific user", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.revalidateTag({
+          userId: "user-123",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:user-123/myWorkspaces",
+          "max"
+        );
+      });
+    });
+
+    describe("cross-dimensional invalidation", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("invalidate specific workspace across ALL users", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag(
+          {
+            workspaceId: "shared-workspace",
+          }
+        );
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces/slim/byWorkspaceId:shared-workspace",
+          "max"
+        );
+      });
+
+      it("invalidate specific slug across ALL users", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.bySlug.revalidateTag({
+          slug: "my-workspace-slug",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces/slim/bySlug:my-workspace-slug",
+          "max"
+        );
+      });
+    });
+
+    describe("updateTag with hierarchical params", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("updateTag with full params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.updateTag({
+          userId: "u1",
+          workspaceId: "w1",
+        });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1"
+        );
+      });
+
+      it("updateTag with partial params (userId only)", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.updateTag({
+          userId: "u1",
+        });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myWorkspaces/slim/byWorkspaceId"
+        );
+      });
+
+      it("updateTag with no params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId.updateTag(
+          {}
+        );
+
+        expect(mockUpdateTag).toHaveBeenCalledWith(
+          "admin/userPrivateData/myWorkspaces/slim/byWorkspaceId"
+        );
+      });
+
+      it("branch updateTag with params", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.updateTag({ userId: "u1" });
+
+        expect(mockUpdateTag).toHaveBeenCalledWith("admin/userPrivateData:u1");
+      });
+    });
+
+    describe("multiple scopes with hierarchical params", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("admin scope produces correct tags", () => {
+        const cache = createTestCache();
+        cache.admin.userPrivateData.myProfile.detail.cacheTag({
+          userId: "u1",
+        });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "admin/userPrivateData:u1/myProfile/detail",
+          "admin/userPrivateData:u1/myProfile",
+          "admin/userPrivateData:u1",
+          "admin",
+          "userPrivateData:u1/myProfile/detail",
+          "userPrivateData:u1/myProfile",
+          "userPrivateData:u1"
+        );
+      });
+
+      it("user scope produces correct tags", () => {
+        const cache = createTestCache();
+        mockCacheTag.mockClear();
+        cache.user.userPrivateData.myProfile.detail.cacheTag({ userId: "u1" });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "user/userPrivateData:u1/myProfile/detail",
+          "user/userPrivateData:u1/myProfile",
+          "user/userPrivateData:u1",
+          "user",
+          "userPrivateData:u1/myProfile/detail",
+          "userPrivateData:u1/myProfile",
+          "userPrivateData:u1"
+        );
+      });
+
+      it("different scopes invalidate independently", () => {
+        const cache = createTestCache();
+
+        cache.admin.userPrivateData.revalidateTag({ userId: "u1" });
+        cache.user.userPrivateData.revalidateTag({ userId: "u1" });
+
+        expect(mockRevalidateTag).toHaveBeenNthCalledWith(
+          1,
+          "admin/userPrivateData:u1",
+          "max"
+        );
+        expect(mockRevalidateTag).toHaveBeenNthCalledWith(
+          2,
+          "user/userPrivateData:u1",
+          "max"
+        );
+      });
+    });
+
+    describe("unscoped operations with hierarchical params", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("unscoped cacheTag includes all unscoped hierarchy", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.myWorkspaces.slim.byWorkspaceId.cacheTag({
+          userId: "u1",
+          workspaceId: "w1",
+        });
+
+        expect(mockCacheTag).toHaveBeenCalledWith(
+          "userPrivateData:u1/myWorkspaces/slim/byWorkspaceId:w1",
+          "userPrivateData:u1/myWorkspaces/slim",
+          "userPrivateData:u1/myWorkspaces",
+          "userPrivateData:u1"
+        );
+      });
+
+      it("unscoped revalidateTag with partial params", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.myWorkspaces.slim.byWorkspaceId.revalidateTag({
+          userId: "u1",
+        });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "userPrivateData:u1/myWorkspaces/slim/byWorkspaceId",
+          "max"
+        );
+      });
+
+      it("unscoped branch revalidateTag", () => {
+        const cache = createTestCache();
+        cache.userPrivateData.myWorkspaces.revalidateTag({ userId: "u1" });
+
+        expect(mockRevalidateTag).toHaveBeenCalledWith(
+          "userPrivateData:u1/myWorkspaces",
+          "max"
+        );
+      });
+    });
+
+    describe("deeply nested multi-level params", () => {
+      const createTestCache = () =>
+        createCache(multiLevelParamsSchema, multiLevelParamsScopes);
+
+      it("handles all combinations of partial params", () => {
+        const cache = createTestCache();
+
+        // No params
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({});
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant/users/workspaces/byId",
+          "max"
+        );
+
+        // Only tenantId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users/workspaces/byId",
+          "max"
+        );
+
+        // Only userId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          userId: "u1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant/users:u1/workspaces/byId",
+          "max"
+        );
+
+        // Only workspaceId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          workspaceId: "w1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant/users/workspaces/byId:w1",
+          "max"
+        );
+
+        // tenantId + userId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users:u1/workspaces/byId",
+          "max"
+        );
+
+        // tenantId + workspaceId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+          workspaceId: "w1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users/workspaces/byId:w1",
+          "max"
+        );
+
+        // userId + workspaceId
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          userId: "u1",
+          workspaceId: "w1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant/users:u1/workspaces/byId:w1",
+          "max"
+        );
+
+        // All params
+        cache.admin.tenant.users.workspaces.byId.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+          workspaceId: "w1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users:u1/workspaces/byId:w1",
+          "max"
+        );
+      });
+
+      it("intermediate branches have correct accumulated params", () => {
+        const cache = createTestCache();
+
+        // tenant branch (has tenantId)
+        cache.admin.tenant.revalidateTag({ tenantId: "t1" });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1",
+          "max"
+        );
+
+        // users branch (has tenantId + userId)
+        cache.admin.tenant.users.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users:u1",
+          "max"
+        );
+
+        // workspaces branch (inherits tenantId + userId)
+        cache.admin.tenant.users.workspaces.revalidateTag({
+          tenantId: "t1",
+          userId: "u1",
+        });
+        expect(mockRevalidateTag).toHaveBeenLastCalledWith(
+          "admin/tenant:t1/users:u1/workspaces",
+          "max"
+        );
+      });
+    });
+
+    describe("_path property with hierarchical params", () => {
+      const createTestCache = () =>
+        createCache(hierarchicalParamsSchema, hierarchicalParamsScopes);
+
+      it("leaf _path shows full path without params", () => {
+        const cache = createTestCache();
+        expect(
+          cache.admin.userPrivateData.myWorkspaces.slim.byWorkspaceId._path
+        ).toBe("admin/userPrivateData/myWorkspaces/slim/byWorkspaceId");
+      });
+
+      it("branch _path shows full path without params", () => {
+        const cache = createTestCache();
+        expect(cache.admin.userPrivateData.myWorkspaces._path).toBe(
+          "admin/userPrivateData/myWorkspaces"
+        );
+      });
+
+      it("unscoped _path shows path without scope", () => {
+        const cache = createTestCache();
+        expect(
+          cache.userPrivateData.myWorkspaces.slim.byWorkspaceId._path
+        ).toBe("userPrivateData/myWorkspaces/slim/byWorkspaceId");
       });
     });
   });
