@@ -36,9 +36,8 @@ export type AccumulatedParams<
  * - An empty object {}
  * - An object with only _params key
  */
-export type IsLeaf<T> = T extends { _params: ParamsArray }
-  ? true
-  : T extends Record<string, never>
+export type IsLeaf<T> =
+  T extends Record<string, never>
     ? true
     : keyof T extends "_params"
       ? true
