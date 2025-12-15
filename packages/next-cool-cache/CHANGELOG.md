@@ -1,5 +1,11 @@
 # next-cool-cache
 
+## 0.3.0
+
+### Minor Changes
+
+- [#21](https://github.com/imbhargav5/next-cool-cache/pull/21) [`4531f3e`](https://github.com/imbhargav5/next-cool-cache/commit/4531f3e78cc1f460768903e30d3f477cac9c85e9) Thanks [@imbhargav5](https://github.com/imbhargav5)! - Add branch level params (earlier we only used to have leaf params)
+
 ## 0.1.1
 
 ### Patch Changes
