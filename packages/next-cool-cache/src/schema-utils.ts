@@ -55,3 +55,16 @@ export function getChildKeys(node: unknown): string[] {
 
   return Object.keys(node).filter((key) => key !== "_params");
 }
+
+/**
+ * Check if a branch node has params.
+ * A branch with params has _params AND other children (unlike a leaf which only has _params).
+ */
+export function hasBranchParams(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const keys = Object.keys(value);
+  return keys.includes("_params") && keys.length > 1;
+}

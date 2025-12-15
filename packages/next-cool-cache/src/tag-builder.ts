@@ -113,3 +113,146 @@ export function buildUnscopedTags(
 
   return tags;
 }
+
+/**
+ * Build a tag with params embedded at their respective path segments.
+ * Unlike buildTag which appends all params at the end, this embeds params
+ * at the segment where they were defined.
+ *
+ * Example:
+ * - buildTagWithEmbeddedParams(
+ *     ['userPrivateData', 'myWorkspaces', 'byId'],
+ *     new Map([[0, ['userId']], [2, ['workspaceId']]]),
+ *     { userId: 'u1', workspaceId: 'w1' }
+ *   ) => 'userPrivateData:u1/myWorkspaces/byId:w1'
+ *
+ * - With partial params:
+ *   buildTagWithEmbeddedParams(..., { userId: 'u1' })
+ *   => 'userPrivateData:u1/myWorkspaces/byId'
+ */
+export function buildTagWithEmbeddedParams(
+  pathSegments: string[],
+  paramsBySegment: Map<number, string[]>,
+  params: Record<string, string>
+): string {
+  return pathSegments
+    .map((segment, i) => {
+      const segmentParams = paramsBySegment.get(i) || [];
+      const paramValues = segmentParams
+        .map((p) => params[p])
+        .filter((v): v is string => v !== undefined);
+
+      return paramValues.length > 0
+        ? `${segment}:${paramValues.join(":")}`
+        : segment;
+    })
+    .join("/");
+}
+
+/**
+ * Build all ancestor tags with embedded params.
+ * Returns tags from the root up to (but not including) the full path.
+ *
+ * Example:
+ * - buildAncestorTagsWithEmbeddedParams(
+ *     ['userPrivateData', 'myWorkspaces', 'byId'],
+ *     new Map([[0, ['userId']], [2, ['workspaceId']]]),
+ *     { userId: 'u1', workspaceId: 'w1' }
+ *   ) => ['userPrivateData:u1', 'userPrivateData:u1/myWorkspaces']
+ */
+export function buildAncestorTagsWithEmbeddedParams(
+  pathSegments: string[],
+  paramsBySegment: Map<number, string[]>,
+  params: Record<string, string>
+): string[] {
+  const ancestors: string[] = [];
+
+  for (let i = 1; i < pathSegments.length; i++) {
+    const ancestorPath = pathSegments.slice(0, i);
+    const tag = buildTagWithEmbeddedParams(ancestorPath, paramsBySegment, params);
+    ancestors.push(tag);
+  }
+
+  return ancestors;
+}
+
+/**
+ * Build all tags for hierarchical caching with embedded params.
+ * This is for cacheTag() - it registers all combinations to enable
+ * invalidation at any level.
+ *
+ * For cache.admin.userPrivateData.myWorkspaces.byId.cacheTag({ userId: 'u1', workspaceId: 'w1' }):
+ * Returns both scoped and unscoped hierarchies:
+ * - 'admin/userPrivateData:u1/myWorkspaces/byId:w1' (scoped leaf)
+ * - 'admin/userPrivateData:u1/myWorkspaces' (scoped ancestor)
+ * - 'admin/userPrivateData:u1' (scoped ancestor)
+ * - 'admin' (scope root)
+ * - 'userPrivateData:u1/myWorkspaces/byId:w1' (unscoped leaf)
+ * - 'userPrivateData:u1/myWorkspaces' (unscoped ancestor)
+ * - 'userPrivateData:u1' (unscoped ancestor)
+ */
+export function buildAllTagsWithEmbeddedParams(
+  resourcePath: string[],
+  scopePath: string[],
+  paramsBySegment: Map<number, string[]>,
+  params: Record<string, string>
+): string[] {
+  const tags: string[] = [];
+
+  // Build full path tags (scoped)
+  const fullPath = [...scopePath, ...resourcePath];
+
+  // Adjust paramsBySegment indices to account for scope prefix
+  const scopedParamsBySegment = new Map<number, string[]>();
+  for (const [index, paramNames] of paramsBySegment) {
+    scopedParamsBySegment.set(index + scopePath.length, paramNames);
+  }
+
+  const scopedKey = buildTagWithEmbeddedParams(fullPath, scopedParamsBySegment, params);
+  const scopedAncestors = buildAncestorTagsWithEmbeddedParams(
+    fullPath,
+    scopedParamsBySegment,
+    params
+  );
+
+  // Add all scoped tags (most specific first)
+  tags.push(scopedKey);
+  tags.push(...scopedAncestors.reverse());
+
+  // Build unscoped tags
+  const unscopedKey = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, params);
+  const unscopedAncestors = buildAncestorTagsWithEmbeddedParams(
+    resourcePath,
+    paramsBySegment,
+    params
+  );
+
+  // Add all unscoped tags (most specific first)
+  tags.push(unscopedKey);
+  tags.push(...unscopedAncestors.reverse());
+
+  return tags;
+}
+
+/**
+ * Build all tags for unscoped hierarchical caching with embedded params.
+ */
+export function buildUnscopedTagsWithEmbeddedParams(
+  resourcePath: string[],
+  paramsBySegment: Map<number, string[]>,
+  params: Record<string, string>
+): string[] {
+  const tags: string[] = [];
+
+  const resourceKey = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, params);
+  const resourceAncestors = buildAncestorTagsWithEmbeddedParams(
+    resourcePath,
+    paramsBySegment,
+    params
+  );
+
+  tags.push(resourceKey);
+  tags.push(...resourceAncestors.reverse());
+
+  return tags;
+}

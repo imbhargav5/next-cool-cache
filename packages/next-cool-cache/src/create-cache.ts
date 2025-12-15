@@ -4,7 +4,11 @@
 
 import { cacheTag, revalidateTag, updateTag } from "next/cache";
 import { getChildKeys, getParams, isLeafNode } from "./schema-utils.js";
-import { buildAllTags, buildTag, buildUnscopedTags } from "./tag-builder.js";
+import {
+  buildAllTagsWithEmbeddedParams,
+  buildTagWithEmbeddedParams,
+  buildUnscopedTagsWithEmbeddedParams,
+} from "./tag-builder.js";
 import type {
   BranchNode,
   LeafNode,
@@ -14,27 +18,47 @@ import type {
 
 /**
  * Build a leaf node with cacheTag, revalidateTag, and updateTag methods.
+ * Supports accumulated params from ancestors with embedded param format.
  */
 function buildLeafNodeImpl(
   resourcePath: string[],
   scopePath: string[],
-  _params: string[]
+  paramsBySegment: Map<number, string[]>
 ): LeafNode<ParamsArray> {
   const scopedKey = [...scopePath, ...resourcePath].join("/");
 
+  // Adjust paramsBySegment indices to account for scope prefix
+  const scopedParamsBySegment = new Map<number, string[]>();
+  for (const [index, paramNames] of paramsBySegment) {
+    scopedParamsBySegment.set(index + scopePath.length, paramNames);
+  }
+
   return {
     cacheTag: ((p?: Record<string, string>) => {
-      const tags = buildAllTags(resourcePath, scopePath, p ?? {});
+      const tags = buildAllTagsWithEmbeddedParams(
+        resourcePath,
+        scopePath,
+        paramsBySegment,
+        p ?? {}
+      );
       cacheTag(...tags);
     }) as LeafNode<ParamsArray>["cacheTag"],
 
     revalidateTag: ((p?: Record<string, string>) => {
-      const tag = buildTag([...scopePath, ...resourcePath], p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        [...scopePath, ...resourcePath],
+        scopedParamsBySegment,
+        p ?? {}
+      );
       revalidateTag(tag, "max");
     }) as LeafNode<ParamsArray>["revalidateTag"],
 
     updateTag: ((p?: Record<string, string>) => {
-      const tag = buildTag([...scopePath, ...resourcePath], p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        [...scopePath, ...resourcePath],
+        scopedParamsBySegment,
+        p ?? {}
+      );
       updateTag(tag);
     }) as LeafNode<ParamsArray>["updateTag"],
 
@@ -44,26 +68,31 @@ function buildLeafNodeImpl(
 
 /**
  * Build an unscoped leaf node (for cross-scope operations).
+ * Supports accumulated params from ancestors with embedded param format.
  */
 function buildUnscopedLeafNodeImpl(
   resourcePath: string[],
-  _params: string[]
+  paramsBySegment: Map<number, string[]>
 ): LeafNode<ParamsArray> {
   const resourceKey = resourcePath.join("/");
 
   return {
     cacheTag: ((p?: Record<string, string>) => {
-      const tags = buildUnscopedTags(resourcePath, p ?? {});
+      const tags = buildUnscopedTagsWithEmbeddedParams(
+        resourcePath,
+        paramsBySegment,
+        p ?? {}
+      );
       cacheTag(...tags);
     }) as LeafNode<ParamsArray>["cacheTag"],
 
     revalidateTag: ((p?: Record<string, string>) => {
-      const tag = buildTag(resourcePath, p ?? {});
+      const tag = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, p ?? {});
       revalidateTag(tag, "max");
     }) as LeafNode<ParamsArray>["revalidateTag"],
 
     updateTag: ((p?: Record<string, string>) => {
-      const tag = buildTag(resourcePath, p ?? {});
+      const tag = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, p ?? {});
       updateTag(tag);
     }) as LeafNode<ParamsArray>["updateTag"],
 
@@ -73,21 +102,39 @@ function buildUnscopedLeafNodeImpl(
 
 /**
  * Build a branch node with revalidateTag and updateTag methods.
+ * Supports accumulated params from ancestors with embedded param format.
  */
 function buildBranchNodeImpl(
   resourcePath: string[],
-  scopePath: string[]
-): BranchNode {
+  scopePath: string[],
+  paramsBySegment: Map<number, string[]>
+): BranchNode<ParamsArray> {
   const scopedKey = [...scopePath, ...resourcePath].join("/");
 
-  return {
-    revalidateTag: () => {
-      revalidateTag(scopedKey || scopePath[0] || "root", "max");
-    },
+  // Adjust paramsBySegment indices to account for scope prefix
+  const scopedParamsBySegment = new Map<number, string[]>();
+  for (const [index, paramNames] of paramsBySegment) {
+    scopedParamsBySegment.set(index + scopePath.length, paramNames);
+  }
 
-    updateTag: () => {
-      updateTag(scopedKey || scopePath[0] || "root");
-    },
+  return {
+    revalidateTag: ((p?: Record<string, string>) => {
+      const tag = buildTagWithEmbeddedParams(
+        [...scopePath, ...resourcePath],
+        scopedParamsBySegment,
+        p ?? {}
+      );
+      revalidateTag(tag || scopePath[0] || "root", "max");
+    }) as BranchNode<ParamsArray>["revalidateTag"],
+
+    updateTag: ((p?: Record<string, string>) => {
+      const tag = buildTagWithEmbeddedParams(
+        [...scopePath, ...resourcePath],
+        scopedParamsBySegment,
+        p ?? {}
+      );
+      updateTag(tag || scopePath[0] || "root");
+    }) as BranchNode<ParamsArray>["updateTag"],
 
     _path: scopedKey,
   };
@@ -95,13 +142,25 @@ function buildBranchNodeImpl(
 
 /**
  * Recursively build the scoped cache tree.
+ * Accumulates params from ancestors and tracks which params belong to which segment.
  */
 function buildScopedBranch(
   schema: Record<string, unknown>,
   resourcePath: string[],
-  scopePath: string[]
+  scopePath: string[],
+  paramsBySegment: Map<number, string[]> = new Map()
 ): Record<string, unknown> {
-  const branchNode = buildBranchNodeImpl(resourcePath, scopePath);
+  // Get params at this branch level (if any)
+  const branchParams = getParams(schema);
+
+  // Create new paramsBySegment with this branch's params (if any)
+  const newParamsBySegment = new Map(paramsBySegment);
+  if (branchParams.length > 0 && resourcePath.length > 0) {
+    // Params belong to the last segment of the current path
+    newParamsBySegment.set(resourcePath.length - 1, branchParams);
+  }
+
+  const branchNode = buildBranchNodeImpl(resourcePath, scopePath, newParamsBySegment);
   const result: Record<string, unknown> = { ...branchNode };
 
   for (const key of getChildKeys(schema)) {
@@ -109,16 +168,23 @@ function buildScopedBranch(
     const childPath = [...resourcePath, key];
 
     if (isLeafNode(childSchema)) {
-      result[key] = buildLeafNodeImpl(
-        childPath,
-        scopePath,
-        getParams(childSchema)
-      );
+      // Get leaf's own params
+      const leafParams = getParams(childSchema);
+
+      // Create final paramsBySegment for this leaf
+      const leafParamsBySegment = new Map(newParamsBySegment);
+      if (leafParams.length > 0) {
+        // Leaf params belong to the leaf segment
+        leafParamsBySegment.set(childPath.length - 1, leafParams);
+      }
+
+      result[key] = buildLeafNodeImpl(childPath, scopePath, leafParamsBySegment);
     } else {
       result[key] = buildScopedBranch(
         childSchema as Record<string, unknown>,
         childPath,
-        scopePath
+        scopePath,
+        newParamsBySegment
       );
     }
   }
@@ -128,19 +194,33 @@ function buildScopedBranch(
 
 /**
  * Recursively build the unscoped cache tree (for cross-scope operations).
+ * Accumulates params from ancestors and tracks which params belong to which segment.
  */
 function buildUnscopedBranch(
   schema: Record<string, unknown>,
-  resourcePath: string[]
+  resourcePath: string[],
+  paramsBySegment: Map<number, string[]> = new Map()
 ): Record<string, unknown> {
+  // Get params at this branch level (if any)
+  const branchParams = getParams(schema);
+
+  // Create new paramsBySegment with this branch's params (if any)
+  const newParamsBySegment = new Map(paramsBySegment);
+  if (branchParams.length > 0 && resourcePath.length > 0) {
+    // Params belong to the last segment of the current path
+    newParamsBySegment.set(resourcePath.length - 1, branchParams);
+  }
+
   const resourceKey = resourcePath.join("/");
   const result: Record<string, unknown> = {
-    revalidateTag: () => {
-      revalidateTag(resourceKey || "root", "max");
-    },
-    updateTag: () => {
-      updateTag(resourceKey || "root");
-    },
+    revalidateTag: ((p?: Record<string, string>) => {
+      const tag = buildTagWithEmbeddedParams(resourcePath, newParamsBySegment, p ?? {});
+      revalidateTag(tag || "root", "max");
+    }) as BranchNode<ParamsArray>["revalidateTag"],
+    updateTag: ((p?: Record<string, string>) => {
+      const tag = buildTagWithEmbeddedParams(resourcePath, newParamsBySegment, p ?? {});
+      updateTag(tag || "root");
+    }) as BranchNode<ParamsArray>["updateTag"],
     _path: resourceKey,
   };
 
@@ -149,14 +229,22 @@ function buildUnscopedBranch(
     const childPath = [...resourcePath, key];
 
     if (isLeafNode(childSchema)) {
-      result[key] = buildUnscopedLeafNodeImpl(
-        childPath,
-        getParams(childSchema)
-      );
+      // Get leaf's own params
+      const leafParams = getParams(childSchema);
+
+      // Create final paramsBySegment for this leaf
+      const leafParamsBySegment = new Map(newParamsBySegment);
+      if (leafParams.length > 0) {
+        // Leaf params belong to the leaf segment
+        leafParamsBySegment.set(childPath.length - 1, leafParams);
+      }
+
+      result[key] = buildUnscopedLeafNodeImpl(childPath, leafParamsBySegment);
     } else {
       result[key] = buildUnscopedBranch(
         childSchema as Record<string, unknown>,
-        childPath
+        childPath,
+        newParamsBySegment
       );
     }
   }

@@ -276,3 +276,57 @@ export const wideSchema = {
     locations: {},
   },
 } as const;
+
+/**
+ * Hierarchical params schema - tests _params at branch (non-leaf) levels.
+ * This enables scenarios like user-scoped caches where all resources
+ * under a user need the userId param.
+ */
+export const hierarchicalParamsSchema = {
+  userPrivateData: {
+    _params: ["userId"] as const,
+    myWorkspaces: {
+      slim: {
+        list: {},
+        byWorkspaceId: { _params: ["workspaceId"] as const },
+        bySlug: { _params: ["slug"] as const },
+      },
+      verbose: {
+        list: {},
+        byWorkspaceId: { _params: ["workspaceId"] as const },
+      },
+    },
+    myProfile: {
+      detail: {},
+      fullName: {},
+      email: {},
+      avatarUrl: {},
+    },
+    myPendingInvitations: {
+      list: {},
+    },
+  },
+} as const;
+
+export const hierarchicalParamsScopes = ["admin", "user"] as const;
+
+/**
+ * Multi-level params schema - tests _params at multiple branch levels.
+ */
+export const multiLevelParamsSchema = {
+  tenant: {
+    _params: ["tenantId"] as const,
+    users: {
+      _params: ["userId"] as const,
+      profile: {},
+      settings: {},
+      workspaces: {
+        list: {},
+        byId: { _params: ["workspaceId"] as const },
+      },
+    },
+    config: {},
+  },
+} as const;
+
+export const multiLevelParamsScopes = ["admin", "member"] as const;
