@@ -1,5 +1,11 @@
 # next-cool-cache
 
+## 0.3.1
+
+### Patch Changes
+
+- [#23](https://github.com/imbhargav5/next-cool-cache/pull/23) [`ef5ebf1`](https://github.com/imbhargav5/next-cool-cache/commit/ef5ebf1b8fdc601a0952b21dfe2455f578fc5239) Thanks [@imbhargav5](https://github.com/imbhargav5)! - type fix
+
 ## 0.3.0
 
 ### Minor Changes
