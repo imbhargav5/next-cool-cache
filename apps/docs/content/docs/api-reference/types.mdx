@@ -70,13 +70,11 @@ type NoParams = ParamsToObject<readonly []>;
 Determines if a schema node type is a leaf node.
 
 ```ts
-type IsLeaf<T> = T extends { _params: ParamsArray }
+type IsLeaf<T> = T extends Record<string, never>
   ? true
-  : T extends Record<string, never>
+  : keyof T extends '_params'
     ? true
-    : keyof T extends '_params'
-      ? true
-      : false;
+    : false;
 ```
 
 **Rules:**
