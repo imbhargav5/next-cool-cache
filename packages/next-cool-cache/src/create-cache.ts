@@ -87,12 +87,20 @@ function buildUnscopedLeafNodeImpl(
     }) as LeafNode<ParamsArray>["cacheTag"],
 
     revalidateTag: ((p?: Record<string, string>) => {
-      const tag = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        resourcePath,
+        paramsBySegment,
+        p ?? {}
+      );
       revalidateTag(tag, "max");
     }) as LeafNode<ParamsArray>["revalidateTag"],
 
     updateTag: ((p?: Record<string, string>) => {
-      const tag = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        resourcePath,
+        paramsBySegment,
+        p ?? {}
+      );
       updateTag(tag);
     }) as LeafNode<ParamsArray>["updateTag"],
 
@@ -160,7 +168,11 @@ function buildScopedBranch(
     newParamsBySegment.set(resourcePath.length - 1, branchParams);
   }
 
-  const branchNode = buildBranchNodeImpl(resourcePath, scopePath, newParamsBySegment);
+  const branchNode = buildBranchNodeImpl(
+    resourcePath,
+    scopePath,
+    newParamsBySegment
+  );
   const result: Record<string, unknown> = { ...branchNode };
 
   for (const key of getChildKeys(schema)) {
@@ -178,7 +190,11 @@ function buildScopedBranch(
         leafParamsBySegment.set(childPath.length - 1, leafParams);
       }
 
-      result[key] = buildLeafNodeImpl(childPath, scopePath, leafParamsBySegment);
+      result[key] = buildLeafNodeImpl(
+        childPath,
+        scopePath,
+        leafParamsBySegment
+      );
     } else {
       result[key] = buildScopedBranch(
         childSchema as Record<string, unknown>,
@@ -214,11 +230,19 @@ function buildUnscopedBranch(
   const resourceKey = resourcePath.join("/");
   const result: Record<string, unknown> = {
     revalidateTag: ((p?: Record<string, string>) => {
-      const tag = buildTagWithEmbeddedParams(resourcePath, newParamsBySegment, p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        resourcePath,
+        newParamsBySegment,
+        p ?? {}
+      );
       revalidateTag(tag || "root", "max");
     }) as BranchNode<ParamsArray>["revalidateTag"],
     updateTag: ((p?: Record<string, string>) => {
-      const tag = buildTagWithEmbeddedParams(resourcePath, newParamsBySegment, p ?? {});
+      const tag = buildTagWithEmbeddedParams(
+        resourcePath,
+        newParamsBySegment,
+        p ?? {}
+      );
       updateTag(tag || "root");
     }) as BranchNode<ParamsArray>["updateTag"],
     _path: resourceKey,

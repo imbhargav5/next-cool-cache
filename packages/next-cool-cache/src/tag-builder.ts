@@ -169,7 +169,11 @@ export function buildAncestorTagsWithEmbeddedParams(
 
   for (let i = 1; i < pathSegments.length; i++) {
     const ancestorPath = pathSegments.slice(0, i);
-    const tag = buildTagWithEmbeddedParams(ancestorPath, paramsBySegment, params);
+    const tag = buildTagWithEmbeddedParams(
+      ancestorPath,
+      paramsBySegment,
+      params
+    );
     ancestors.push(tag);
   }
 
@@ -208,7 +212,11 @@ export function buildAllTagsWithEmbeddedParams(
     scopedParamsBySegment.set(index + scopePath.length, paramNames);
   }
 
-  const scopedKey = buildTagWithEmbeddedParams(fullPath, scopedParamsBySegment, params);
+  const scopedKey = buildTagWithEmbeddedParams(
+    fullPath,
+    scopedParamsBySegment,
+    params
+  );
   const scopedAncestors = buildAncestorTagsWithEmbeddedParams(
     fullPath,
     scopedParamsBySegment,
@@ -220,7 +228,11 @@ export function buildAllTagsWithEmbeddedParams(
   tags.push(...scopedAncestors.reverse());
 
   // Build unscoped tags
-  const unscopedKey = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, params);
+  const unscopedKey = buildTagWithEmbeddedParams(
+    resourcePath,
+    paramsBySegment,
+    params
+  );
   const unscopedAncestors = buildAncestorTagsWithEmbeddedParams(
     resourcePath,
     paramsBySegment,
@@ -244,7 +256,11 @@ export function buildUnscopedTagsWithEmbeddedParams(
 ): string[] {
   const tags: string[] = [];
 
-  const resourceKey = buildTagWithEmbeddedParams(resourcePath, paramsBySegment, params);
+  const resourceKey = buildTagWithEmbeddedParams(
+    resourcePath,
+    paramsBySegment,
+    params
+  );
   const resourceAncestors = buildAncestorTagsWithEmbeddedParams(
     resourcePath,
     paramsBySegment,

@@ -497,18 +497,18 @@ describe("tag-builder", () => {
       ]);
 
       expect(
-        buildTagWithEmbeddedParams(
-          ["tenant", "users"],
-          paramsBySegment,
-          { tenantId: "t1", orgId: "o1", userId: "u1" }
-        )
+        buildTagWithEmbeddedParams(["tenant", "users"], paramsBySegment, {
+          tenantId: "t1",
+          orgId: "o1",
+          userId: "u1",
+        })
       ).toBe("tenant:t1:o1/users:u1");
     });
 
     it("handles path with no params defined", () => {
-      expect(
-        buildTagWithEmbeddedParams(["users", "list"], new Map(), {})
-      ).toBe("users/list");
+      expect(buildTagWithEmbeddedParams(["users", "list"], new Map(), {})).toBe(
+        "users/list"
+      );
     });
 
     it("handles multi-level branch params", () => {
@@ -725,11 +725,9 @@ describe("tag-builder", () => {
         const paramsBySegment = new Map<number, string[]>([[0, ["timestamp"]]]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["events", "byTime"],
-            paramsBySegment,
-            { timestamp: "2024:01:15:10:30:00" }
-          )
+          buildTagWithEmbeddedParams(["events", "byTime"], paramsBySegment, {
+            timestamp: "2024:01:15:10:30:00",
+          })
         ).toBe("events:2024:01:15:10:30:00/byTime");
       });
 
@@ -737,11 +735,9 @@ describe("tag-builder", () => {
         const paramsBySegment = new Map<number, string[]>([[0, ["path"]]]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["files", "content"],
-            paramsBySegment,
-            { path: "home/user/docs" }
-          )
+          buildTagWithEmbeddedParams(["files", "content"], paramsBySegment, {
+            path: "home/user/docs",
+          })
         ).toBe("files:home/user/docs/content");
       });
 
@@ -749,11 +745,9 @@ describe("tag-builder", () => {
         const paramsBySegment = new Map<number, string[]>([[0, ["email"]]]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["users", "profile"],
-            paramsBySegment,
-            { email: "user+test@example.com" }
-          )
+          buildTagWithEmbeddedParams(["users", "profile"], paramsBySegment, {
+            email: "user+test@example.com",
+          })
         ).toBe("users:user+test@example.com/profile");
       });
 
@@ -761,11 +755,9 @@ describe("tag-builder", () => {
         const paramsBySegment = new Map<number, string[]>([[0, ["name"]]]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["users", "profile"],
-            paramsBySegment,
-            { name: "日本語ユーザー" }
-          )
+          buildTagWithEmbeddedParams(["users", "profile"], paramsBySegment, {
+            name: "日本語ユーザー",
+          })
         ).toBe("users:日本語ユーザー/profile");
       });
 
@@ -773,11 +765,9 @@ describe("tag-builder", () => {
         const paramsBySegment = new Map<number, string[]>([[0, ["query"]]]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["search", "results"],
-            paramsBySegment,
-            { query: "" }
-          )
+          buildTagWithEmbeddedParams(["search", "results"], paramsBySegment, {
+            query: "",
+          })
         ).toBe("search:/results");
       });
     });
@@ -819,11 +809,11 @@ describe("tag-builder", () => {
         ]);
 
         expect(
-          buildTagWithEmbeddedParams(
-            ["location", "data"],
-            paramsBySegment,
-            { tenantId: "t1", regionId: "r1", zoneId: "z1" }
-          )
+          buildTagWithEmbeddedParams(["location", "data"], paramsBySegment, {
+            tenantId: "t1",
+            regionId: "r1",
+            zoneId: "z1",
+          })
         ).toBe("location:t1:r1:z1/data");
       });
 
@@ -834,11 +824,10 @@ describe("tag-builder", () => {
 
         // Only provide 2 of 3 params
         expect(
-          buildTagWithEmbeddedParams(
-            ["location", "data"],
-            paramsBySegment,
-            { tenantId: "t1", zoneId: "z1" }
-          )
+          buildTagWithEmbeddedParams(["location", "data"], paramsBySegment, {
+            tenantId: "t1",
+            zoneId: "z1",
+          })
         ).toBe("location:t1:z1/data");
       });
 

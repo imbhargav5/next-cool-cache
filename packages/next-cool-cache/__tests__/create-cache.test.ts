@@ -1671,14 +1671,14 @@ describe("createCache", () => {
         const cache = createTestCache();
         cache.admin.userPrivateData.updateTag({ userId: "u1" });
 
-        expect(mockUpdateTag).toHaveBeenCalledWith(
-          "admin/userPrivateData:u1"
-        );
+        expect(mockUpdateTag).toHaveBeenCalledWith("admin/userPrivateData:u1");
       });
 
       it("intermediate branch inherits parent params", () => {
         const cache = createTestCache();
-        cache.admin.userPrivateData.myWorkspaces.revalidateTag({ userId: "u1" });
+        cache.admin.userPrivateData.myWorkspaces.revalidateTag({
+          userId: "u1",
+        });
 
         expect(mockRevalidateTag).toHaveBeenCalledWith(
           "admin/userPrivateData:u1/myWorkspaces",
@@ -2046,9 +2046,7 @@ describe("createCache", () => {
         const cache = createTestCache();
         cache.admin.userPrivateData.updateTag({ userId: "u1" });
 
-        expect(mockUpdateTag).toHaveBeenCalledWith(
-          "admin/userPrivateData:u1"
-        );
+        expect(mockUpdateTag).toHaveBeenCalledWith("admin/userPrivateData:u1");
       });
     });
 
